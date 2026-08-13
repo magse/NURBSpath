@@ -77,7 +77,7 @@ template <std::floating_point REAL>
 /**
  * @brief Embed a 2D NURBS spline by projecting its control points.
  *
- * Weights, knots, degree, closure state, period count, and native `s` domain are copied
+ * Weights, knots, degree, closure state, and native `s` domain are copied
  * unchanged. Because the plane mapping is affine, evaluating the resulting 3D
  * spline is equivalent to projecting the corresponding evaluated 2D point.
  *
@@ -101,7 +101,6 @@ template <std::floating_point REAL>
         spline.knots(),
         spline.degree(),
         spline.is_closed(),
-        spline.period_count(),
         spline.tolerance()};
 }
 

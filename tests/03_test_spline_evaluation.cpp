@@ -37,8 +37,8 @@ int main() {
         {0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 1.0, 1.0},
         2);
     check(std::isfinite(joined_curve.evaluate(0.5).x()),
-          "repeated knot evaluates finitely");
+          "multiple knot evaluates finitely");
     check(std::isfinite(joined_curve.first_derivative(0.5).length()),
-          "repeated-knot derivative evaluates finitely");
+          "multiple-knot derivative evaluates finitely");
     return finish("03_test_spline_evaluation");
 }

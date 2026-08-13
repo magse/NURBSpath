@@ -148,17 +148,16 @@ template <std::floating_point REAL>
 }
 
 /**
- * @brief Allocate a closed or repeated complete 2D NURBS definition.
+ * @brief Allocate an open or closed complete 2D NURBS definition.
  * @tparam REAL Floating-point scalar type.
  * @param control_points Control points in the 2D world.
  * @param weights Positive rational weights.
  * @param knots Nondecreasing knot vector.
  * @param degree Positive degree below the control-point count.
- * @param closed True when the fundamental-period endpoints must coincide.
- * @param period_count Number of connected periods; zero means unlimited.
+ * @param closed True when the active-domain endpoints must coincide.
  * @param tolerance Positive validation and parameter-boundary tolerance.
  * @return Unique smart pointer owning the new 2D spline.
- * @throws std::invalid_argument When the definition or repeated seam is invalid.
+ * @throws std::invalid_argument When the definition or closed seam is invalid.
  */
 template <std::floating_point REAL>
 [[nodiscard]] std::unique_ptr<nurbs_spline2<REAL>> make_nurbs_spline2(
@@ -167,7 +166,6 @@ template <std::floating_point REAL>
     std::vector<REAL> knots,
     std::size_t degree,
     bool closed,
-    std::size_t period_count,
     REAL tolerance = REAL(64) * std::numeric_limits<REAL>::epsilon()) {
     return std::make_unique<nurbs_spline2<REAL>>(
         std::move(control_points),
@@ -175,7 +173,6 @@ template <std::floating_point REAL>
         std::move(knots),
         degree,
         closed,
-        period_count,
         tolerance);
 }
 
@@ -217,18 +214,17 @@ requires
 }
 
 /**
- * @brief Allocate a closed or repeated 2D NURBS definition from valarrays.
+ * @brief Allocate an open or closed 2D NURBS definition from valarrays.
  * @tparam REAL Floating-point scalar type.
  * @tparam control_point_array Deduced `std::valarray<point2<REAL>>` type.
  * @param control_points Control points copied in valarray index order.
  * @param weights Positive rational weights copied in valarray index order.
  * @param knots Nondecreasing knots copied in valarray index order.
  * @param degree Positive degree below the control-point count.
- * @param closed True when the fundamental-period endpoints must coincide.
- * @param period_count Number of connected periods; zero means unlimited.
+ * @param closed True when the active-domain endpoints must coincide.
  * @param tolerance Positive validation and parameter-boundary tolerance.
  * @return Unique smart pointer owning the new 2D spline.
- * @throws std::invalid_argument When the definition or repeated seam is invalid.
+ * @throws std::invalid_argument When the definition or closed seam is invalid.
  */
 template <
     std::floating_point REAL,
@@ -243,7 +239,6 @@ requires
     const std::valarray<REAL>& knots,
     std::size_t degree,
     bool closed,
-    std::size_t period_count,
     REAL tolerance = REAL(64) * std::numeric_limits<REAL>::epsilon()) {
     return make_nurbs_spline2<REAL>(
         detail::valarray_to_vector(control_points),
@@ -251,7 +246,6 @@ requires
         detail::valarray_to_vector(knots),
         degree,
         closed,
-        period_count,
         tolerance);
 }
 
@@ -420,17 +414,16 @@ template <std::floating_point REAL>
 }
 
 /**
- * @brief Allocate a closed or repeated complete 3D NURBS definition.
+ * @brief Allocate an open or closed complete 3D NURBS definition.
  * @tparam REAL Floating-point scalar type.
  * @param control_points World-space control points.
  * @param weights Positive rational weights.
  * @param knots Nondecreasing knot vector.
  * @param degree Positive degree below the control-point count.
- * @param closed True when the fundamental-period endpoints must coincide.
- * @param period_count Number of connected periods; zero means unlimited.
+ * @param closed True when the active-domain endpoints must coincide.
  * @param tolerance Positive validation and parameter-boundary tolerance.
  * @return Unique smart pointer owning the new 3D spline.
- * @throws std::invalid_argument When the definition or repeated seam is invalid.
+ * @throws std::invalid_argument When the definition or closed seam is invalid.
  */
 template <std::floating_point REAL>
 [[nodiscard]] std::unique_ptr<nurbs_spline3<REAL>> make_nurbs_spline3(
@@ -439,7 +432,6 @@ template <std::floating_point REAL>
     std::vector<REAL> knots,
     std::size_t degree,
     bool closed,
-    std::size_t period_count,
     REAL tolerance = REAL(64) * std::numeric_limits<REAL>::epsilon()) {
     return std::make_unique<nurbs_spline3<REAL>>(
         std::move(control_points),
@@ -447,7 +439,6 @@ template <std::floating_point REAL>
         std::move(knots),
         degree,
         closed,
-        period_count,
         tolerance);
 }
 
@@ -489,18 +480,17 @@ requires
 }
 
 /**
- * @brief Allocate a closed or repeated 3D NURBS definition from valarrays.
+ * @brief Allocate an open or closed 3D NURBS definition from valarrays.
  * @tparam REAL Floating-point scalar type.
  * @tparam control_point_array Deduced `std::valarray<point3<REAL>>` type.
  * @param control_points World-space control points copied in valarray order.
  * @param weights Positive rational weights copied in valarray index order.
  * @param knots Nondecreasing knots copied in valarray index order.
  * @param degree Positive degree below the control-point count.
- * @param closed True when the fundamental-period endpoints must coincide.
- * @param period_count Number of connected periods; zero means unlimited.
+ * @param closed True when the active-domain endpoints must coincide.
  * @param tolerance Positive validation and parameter-boundary tolerance.
  * @return Unique smart pointer owning the new 3D spline.
- * @throws std::invalid_argument When the definition or repeated seam is invalid.
+ * @throws std::invalid_argument When the definition or closed seam is invalid.
  */
 template <
     std::floating_point REAL,
@@ -515,7 +505,6 @@ requires
     const std::valarray<REAL>& knots,
     std::size_t degree,
     bool closed,
-    std::size_t period_count,
     REAL tolerance = REAL(64) * std::numeric_limits<REAL>::epsilon()) {
     return make_nurbs_spline3<REAL>(
         detail::valarray_to_vector(control_points),
@@ -523,7 +512,6 @@ requires
         detail::valarray_to_vector(knots),
         degree,
         closed,
-        period_count,
         tolerance);
 }
 

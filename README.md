@@ -25,8 +25,8 @@ installation, and CMake package consumption.
 - `point3<REAL>` as a position type distinct from a direction.
 - `ray3<REAL>` with native parameter coordinate `s`.
 - `nurbs_spline3<REAL>` with rational evaluation, analytic first and second
-  derivatives, unit tangents, approximate arc length, closed seams, and finite
-  or unlimited connected repetition. The 2D spline provides the same options.
+  derivatives, unit tangents, approximate arc length, and optional closure. The
+  2D spline provides the same options.
 - Global B-spline interpolation through 3D samples at caller-supplied
   arc-length parameter stations.
 - `sphere3<REAL>` parameterized by longitude `u` and latitude `v`.
@@ -56,16 +56,15 @@ the plane origin and orthonormal `(u, v)` directions. Numerical queries between
 | Entity | Coordinates | Evaluation |
 |---|---|---|
 | 2D/3D ray | `s >= 0` | `origin + s * direction` in its own world |
-| 2D/3D NURBS spline | `s_min() <= s <= s_max()`; `s_max()` is `+infinity` for unlimited repetition | Rational B-spline evaluation in its own world |
+| 2D/3D NURBS spline | `s_min() <= s <= s_max()` | Rational B-spline evaluation in its own world |
 | 2D circle | `u` angle | Counterclockwise from +X in `[0, 2*pi)` |
 | Sphere | `u` longitude, `v` latitude | `u` in `[0, 2*pi)`, `v` in `[-pi/2, pi/2]` |
 | Infinite plane | signed in-plane `u`, `v` | `origin + u*u_direction + v*v_direction` |
 
 Ray directions are not normalized automatically. Therefore ray `s` is a
 distance only when the supplied direction is a unit vector in that entity's
-world. Spline `s` begins at the fundamental active knot domain. Curves produced
-by `interpolate` retain the exact supplied arc-length stations for their first
-period. Repeated paths extend forward in `s`; they never wrap backward.
+world. Spline `s` spans the active knot domain. Curves produced by `interpolate`
+retain the exact supplied arc-length stations.
 
 ## Quick start
 
@@ -166,49 +165,27 @@ const nurbspath::nurbs_spline3<double> quarter_circle(
     2);
 ```
 
-The complete-definition constructor has a repeated-path overload whose
-arguments after `degree` are `closed`, `period_count`, and an optional
-`tolerance`:
+The complete-definition constructor has an overload whose arguments after
+`degree` are `closed` and an optional `tolerance`:
 
 ```cpp
-const nurbspath::nurbs_spline2<double> repeated_triangle(
+const nurbspath::nurbs_spline2<double> closed_triangle(
     {{1.0, 0.0}, {0.0, 1.0}, {-1.0, 0.0}, {1.0, 0.0}},
     {1.0, 1.0, 1.0, 1.0},
-    {-1.0, 0.0, 1.0, 2.0, 3.0, 4.0},
+    {0.0, 0.0, 1.0, 2.0, 3.0, 3.0},
     1,
-    true,  // closed
-    std::size_t{3}); // three connected periods
+    true); // closed
 ```
 
-`period_count` has these exact meanings:
-
-- `0`: repeat forward without a finite limit;
-- `1`: an ordinary spline containing one period;
-- `N > 1`: a finite path containing exactly `N` connected periods.
-
 A closed definition must evaluate to the same point at both ends of its
-fundamental period. Closure remains independent of repetition. For an open
-repeated definition, each later copy is translated by `period_end - start`, so
-the next copy begins exactly where the preceding copy ended. Repeated complete
-definitions append the first `degree` controls translated by one common
-displacement, repeat their weights, and use a knot sequence that repeats after
-one period with simple seam knots.
+active domain. `interpolate` and `adopt_to_points` provide matching `closed`
+overloads. Closed interpolation input has coincident first and final positions
+at strictly increasing stations; open input may end elsewhere. Both forms use
+averaged clamped knots and preserve every supplied station.
 
-`interpolate` and `adopt_to_points` provide matching `closed` and
-`period_count` overloads. The input describes one period and includes samples
-at both its first and final, strictly increasing stations. Closed input repeats
-the first position at the final station; open input may end elsewhere. A count
-of one retains averaged clamped knots. Any other count creates cyclic uniform
-knots, preserves every supplied sample station in the fundamental period, and
-continues with matching analytic seam derivatives.
-
-`is_closed()` reports fundamental-period closure. `is_periodic()` is true when
-`period_count()` differs from one. `period_s_max()` and `period_length()`
-describe the fundamental period, while `s_max()` describes the full configured
-path and returns positive infinity for count zero. `get_start()` returns the
-cached point at `s_min()` without evaluation. `get_end()` likewise returns the
-finite path endpoint, but throws `std::domain_error` for unlimited repetition.
-For a zero-based domain, `get_start()` is the point at `s = 0`.
+`is_closed()` reports whether the spline was constructed as closed.
+`get_start()` and `get_end()` return cached endpoint positions without another
+evaluation. For a zero-based domain, `get_start()` is the point at `s = 0`.
 
 Position, first derivative, and second derivative are evaluated together by
 `derivatives_at(s)`. Convenience methods `evaluate`, `point_at`,
@@ -302,7 +279,7 @@ orthonormal basis, so lengths and ray `s` values are preserved. A circle maps
 to a complete `sphere3` using only the projected center and unchanged radius;
 it does not become a planar 3D circle. A spline maps only its control points;
 weights, knots, degree, tolerance, and native `s` domain remain unchanged.
-Closure and the integer period count are preserved as well.
+Closure is preserved as well.
 
 The available 2D numerical queries never project their operands:
 
@@ -454,9 +431,6 @@ against the near plane. A line passing exactly through the eyepoint can collapse
 to a projected point and is omitted. Tessellated curves and sphere marks become
 smoother as their segment counts increase.
 
-Unlimited repeated splines have no finite rendering interval and are rejected
-by the SVG `add` overloads. Choose a finite `period_count` for visualization.
-
 The runnable `nurbspath_svg_example` writes matching orthographic and
 perspective scenes plus a native flat `nurbspath_2d.svg` scene. See
 [INSTALL.md](INSTALL.md) for its command.
@@ -504,8 +478,7 @@ Intersection searches sample a finite parameter interval, refine sign changes
 with bisection, and minimize local absolute residuals to retain tangent contacts.
 Ray/sphere searches derive a safe forward bound from the sphere location and
 radius. Ray/plane searches classify parallel and coplanar rays before numerical
-refinement. Spline searches use the complete active knot domain. They reject an
-unlimited repeated spline because it has no finite interval to search.
+refinement. Spline searches use the complete active knot domain.
 
 `sample_count` is the resolution contract: it must be high enough to expose the
 smallest oscillation or contact basin in a curve. Increase it for high-degree,
@@ -538,8 +511,8 @@ global guarantee is therefore relative to `sample_count`.
 The circle and 2D spline overloads perform the analogous calculations using
 only `point2` and `vector2` arithmetic. A projection plane is neither accepted
 nor consulted by any 2D distance or intersection function. Point-to-spline
-distance and total arc-length approximation reject unlimited repeated paths;
-both operations require a finite full domain.
+distance and total arc-length approximation both use the spline's active knot
+domain.
 
 ## Public API summary
 
@@ -554,7 +527,7 @@ analytic derivatives, tangent, arc-length approximation, global
 `interpolate`, and `adopt_to_points` operations as the 3D spline, with all
 positions and derivatives remaining two-dimensional. The `project` overloads
 are the explicit bridge from 2D entities to a selected `plane3` embedding and
-preserve spline closure and period count.
+preserve spline closure.
 
 `vector3<REAL>` provides `x/y/z`, indexed access, exact equality, unary signs,
 vector addition/subtraction, scalar multiplication/division, `dot`, `cross`,
@@ -576,14 +549,13 @@ the two basis directions, `point_at(u, v)`, `signed_distance_to`, `project`, and
 normal form.
 
 `nurbs_spline3<REAL>` exposes its definition with `control_points`, `weights`,
-`knots`, `degree`, and `tolerance`; its domain with `s_min`, `s_max`,
-`period_s_max`, and `period_length`; and its geometry with `evaluate`,
-`point_at`, `derivatives_at`, `first_derivative`, `second_derivative`, `tangent`,
-and `approximate_arc_length`. Static `interpolate` constructs a new curve,
-while `adopt_to_points` replaces an existing one. Both operations accept
-`closed` and integer `period_count` overloads. `is_closed()`, `is_periodic()`,
-`period_count()`, `get_start()`, and `get_end()` expose repeated-path state and
-cached finite endpoint values.
+`knots`, `degree`, and `tolerance`; its domain with `s_min` and `s_max`; and its
+geometry with `evaluate`, `point_at`, `derivatives_at`,
+`first_derivative`, `second_derivative`, `tangent`, and
+`approximate_arc_length`. Static `interpolate` constructs a new curve, while
+`adopt_to_points` replaces an existing one. Both operations accept a `closed`
+overload. `is_closed()`, `get_start()`, and `get_end()` expose closure and
+cached endpoint values.
 
 `svg_view3<REAL>` creates validated two-point orthographic or perspective
 cameras. `svg_graphics_options<REAL>` controls line width, spline and sphere
@@ -600,8 +572,7 @@ only.
 `make_ray3`, `make_sphere3`, all three `make_plane3` constructor forms, and
 `make_nurbs_spline3`. Every function returns a uniquely owning smart pointer.
 The two spline factories provide both `std::vector` and `std::valarray`
-collection overloads, including forms that accept `closed` and an integer
-`period_count` after `degree`.
+collection overloads, including forms that accept `closed` after `degree`.
 
 Reusable routines in `utility.hpp` include `approximately_equal`, `square`,
 scaled-pivot `solve_linear_system`, `bisect_root`, `golden_section_minimize`,

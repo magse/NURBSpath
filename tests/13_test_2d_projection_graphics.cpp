@@ -3,7 +3,6 @@
 #include "test_support.hpp"
 
 #include <numbers>
-#include <stdexcept>
 #include <string>
 #include <type_traits>
 
@@ -65,9 +64,8 @@ int main() {
           "spline projection preserves degree");
     check_near(projected_spline.tolerance(), spline.tolerance(), 0.0,
                "spline projection preserves tolerance");
-    check(projected_spline.is_closed() == spline.is_closed() &&
-              projected_spline.period_count() == spline.period_count(),
-          "spline projection preserves closure and period count");
+    check(projected_spline.is_closed() == spline.is_closed(),
+          "spline projection preserves closure");
     for (std::size_t index = 0; index < spline.control_points().size(); ++index) {
         check_point(projected_spline.control_points()[index],
                     nurbspath::project(plane, spline.control_points()[index]),
@@ -77,22 +75,17 @@ int main() {
                 nurbspath::project(plane, spline.evaluate(5.0)), 1e-11,
                 "affine spline evaluation commutes with projection");
 
-    const nurbs_spline2<real> periodic_spline(
-        {{1.0, 0.0}, {0.0, 1.0}, {-1.0, 0.0}, {1.0, 0.0}},
+    const nurbs_spline2<real> closed_spline(
+        {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}, {0.0, 0.0}},
         {1.0, 1.0, 1.0, 1.0},
-        {-1.0, 0.0, 1.0, 2.0, 3.0, 4.0},
+        {0.0, 0.0, 1.0, 2.0, 3.0, 3.0},
         1,
-        true,
-        std::size_t(3));
-    const auto projected_periodic = nurbspath::project(plane, periodic_spline);
-    check(projected_periodic.is_closed() && projected_periodic.is_periodic(),
-          "periodic spline projection retains its repeated seam");
-    check(projected_periodic.period_count() == 3,
-          "periodic spline projection retains its period count");
-    check_point(projected_periodic.evaluate(3.5),
-                nurbspath::project(plane, periodic_spline.evaluate(0.5)),
-                1e-12,
-                "projected periodic spline retains repeated evaluation");
+        true);
+    const auto projected_closed = nurbspath::project(plane, closed_spline);
+    check(projected_closed.is_closed(),
+          "closed spline projection retains its seam state");
+    check_point(projected_closed.get_start(), projected_closed.get_end(), 1e-12,
+                "projected closed spline retains coincident endpoints");
 
     const auto view = nurbspath::svg_view3<real>::orthographic(
         {8.0, -10.0, 9.0}, plane.origin(), 10.0, 8.0, 800, 640);
@@ -141,21 +134,5 @@ int main() {
         nurbspath::circle2<float>({1.0F, 2.0F}, 0.5F));
     check_near(static_cast<real>(float_sphere.radius()), 0.5, 0.0,
                "2D projection API supports float");
-
-    const nurbs_spline2<real> unlimited(
-        {{0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}},
-        {1.0, 1.0, 1.0},
-        {-1.0, 0.0, 1.0, 2.0, 3.0},
-        1,
-        false,
-        std::size_t(0));
-    bool rejected_unlimited_spline = false;
-    try {
-        document.add(plane, unlimited);
-    } catch (const std::domain_error&) {
-        rejected_unlimited_spline = true;
-    }
-    check(rejected_unlimited_spline,
-          "projected 2D SVG rendering rejects an unlimited spline domain");
     return finish("13_test_2d_projection_graphics");
 }

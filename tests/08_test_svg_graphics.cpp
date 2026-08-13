@@ -115,20 +115,5 @@ int main() {
     }
     check(rejected_equal_points, "camera rejects equal points");
 
-    const nurbs_spline3<real> unlimited(
-        {{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {2.0, 0.0, 0.0}},
-        {1.0, 1.0, 1.0},
-        {-1.0, 0.0, 1.0, 2.0, 3.0},
-        1,
-        false,
-        std::size_t(0));
-    bool rejected_unlimited_spline = false;
-    try {
-        orthographic.add(unlimited);
-    } catch (const std::domain_error&) {
-        rejected_unlimited_spline = true;
-    }
-    check(rejected_unlimited_spline,
-          "3D SVG rendering rejects an unlimited spline domain");
     return finish("08_test_svg_graphics");
 }

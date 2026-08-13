@@ -3,7 +3,6 @@
 #include "test_support.hpp"
 
 #include <cmath>
-#include <stdexcept>
 
 int main() {
     using namespace test_support;
@@ -66,8 +65,7 @@ int main() {
         {1.0, 1.0, 1.0, 1.0},
         {0.0, 0.0, 1.0, 2.0, 3.0, 3.0},
         1,
-        true,
-        std::size_t(1));
+        true);
     const auto seam_hits = nurbspath::intersect_spline_plane(
         seam_contact, plane, settings);
     check(seam_hits.points.size() == 1 &&
@@ -75,21 +73,5 @@ int main() {
                   1e-10,
           "closed spline-plane seam contact is returned once");
 
-    const nurbs_spline3<real> unlimited(
-        {{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {2.0, 0.0, 0.0}},
-        {1.0, 1.0, 1.0},
-        {-1.0, 0.0, 1.0, 2.0, 3.0},
-        1,
-        false,
-        std::size_t(0));
-    bool rejected_unlimited = false;
-    try {
-        static_cast<void>(
-            nurbspath::intersect_spline_plane(unlimited, plane, settings));
-    } catch (const std::domain_error&) {
-        rejected_unlimited = true;
-    }
-    check(rejected_unlimited,
-          "3D whole-domain intersection rejects unlimited repetition");
     return finish("06_test_spline_intersections");
 }

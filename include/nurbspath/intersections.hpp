@@ -191,7 +191,6 @@ template <std::floating_point REAL>
  * @param circle Target 2D circle.
  * @param settings Numerical tolerances and sampling controls.
  * @return Classified 2D contacts sorted by increasing s.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] intersection_result2<REAL> intersect_spline_circle(
@@ -199,10 +198,6 @@ template <std::floating_point REAL>
     const circle2<REAL>& circle,
     const numerical_settings<REAL>& settings = {}) {
     settings.validate();
-    if (spline.period_count() == 0) {
-        throw std::domain_error(
-            "2D spline-circle intersection requires a finite spline domain");
-    }
     const auto residual = [&](REAL s) {
         return distance(spline.evaluate(s), circle.center()) - circle.radius();
     };
@@ -328,7 +323,6 @@ template <std::floating_point REAL>
  * @param sphere Target sphere.
  * @param settings Numerical tolerances and sampling controls.
  * @return Classified sampled-and-refined contacts sorted by s.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] intersection_result3<REAL> intersect_spline_sphere(
@@ -336,10 +330,6 @@ template <std::floating_point REAL>
     const sphere3<REAL>& sphere,
     const numerical_settings<REAL>& settings = {}) {
     settings.validate();
-    if (spline.period_count() == 0) {
-        throw std::domain_error(
-            "spline-sphere intersection requires a finite spline domain");
-    }
     const auto residual = [&](REAL s) {
         return distance(spline.evaluate(s), sphere.center()) - sphere.radius();
     };
@@ -372,7 +362,6 @@ template <std::floating_point REAL>
  * @param plane Target infinite plane.
  * @param settings Numerical tolerances and sampling controls.
  * @return Classified sampled-and-refined contacts sorted by s.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] intersection_result3<REAL> intersect_spline_plane(
@@ -380,10 +369,6 @@ template <std::floating_point REAL>
     const plane3<REAL>& plane,
     const numerical_settings<REAL>& settings = {}) {
     settings.validate();
-    if (spline.period_count() == 0) {
-        throw std::domain_error(
-            "spline-plane intersection requires a finite spline domain");
-    }
     const auto residual = [&](REAL s) {
         return plane.signed_distance_to(spline.evaluate(s));
     };
@@ -446,7 +431,6 @@ template <std::floating_point REAL>
  * @param sphere Target sphere.
  * @param settings Numerical controls.
  * @return Spline-sphere intersection result.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] intersection_result3<REAL> intersect(
@@ -463,7 +447,6 @@ template <std::floating_point REAL>
  * @param plane Target plane.
  * @param settings Numerical controls.
  * @return Spline-plane intersection result.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] intersection_result3<REAL> intersect(
@@ -496,7 +479,6 @@ template <std::floating_point REAL>
  * @param circle Target circle in the same 2D world.
  * @param settings Numerical controls.
  * @return Two-dimensional spline-circle intersection result.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] intersection_result2<REAL> intersect(

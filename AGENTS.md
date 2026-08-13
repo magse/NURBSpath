@@ -75,17 +75,9 @@ SVGs into the repository root.
 - Ray and spline parameters are named `s`. Sphere and plane surface parameters
   are named `u` and `v`; circle angle is named `u`.
 - A ray is forward for `s >= 0` and does not normalize its direction.
-- A spline's fundamental period is `[knots[degree],
-  knots[control_point_count]]`. A finite period count extends the active domain
-  forward by that many fundamental periods; count zero is forward-unlimited.
-- Closed splines have coincident fundamental-period endpoints. Closure is
-  independent of repetition. Repeated splines append their first `degree`
-  controls translated by one common endpoint displacement, repeat the
-  corresponding weights and knot pattern, and preserve analytic seam
-  derivatives. Each open repetition is translated so it starts where the
-  preceding period ended. Repeated `s` never wraps backward.
-- `get_end()`, total arc length, whole-domain numerical queries, and SVG
-  rendering reject an unlimited repeated spline because it has no finite end.
+- A spline operates on its active knot domain `[knots[degree],
+  knots[control_point_count]]`.
+- Closed splines have coincident active-domain endpoints. Open splines need not.
 - Sphere `u` is longitude in `[0, 2*pi)` and `v` is latitude in
   `[-pi/2, pi/2]`.
 - Plane basis directions must remain orthonormal, with the normal completing a
@@ -97,7 +89,7 @@ SVGs into the repository root.
 - Point/vector/ray projection uses the plane's orthonormal `(u,v)` frame.
   Circle projection produces a sphere from projected center and unchanged
   radius. Spline projection changes only control points and preserves weights,
-  knots, degree, tolerance, closure flags, and native `s`.
+  knots, degree, tolerance, closure state, and native `s`.
 - SVG cameras are defined by world-space eyepoint and look-at points. Keep
   `vector2` and `vector3` unrenderable by themselves because they have no
   world-space origin.
@@ -137,12 +129,9 @@ analytic derivatives with finite differences.
 `interpolate` and `adopt_to_points` perform global interpolation through the
 provided samples. The supplied strictly increasing arc-length stations remain
 the native `s` values; do not silently normalize them. Unit weights make the
-result a valid non-rational subset of NURBS. Repeated input describes one
-fundamental period including its final, strictly greater station. Closed input
-repeats its first position there; open input may have a nonzero endpoint
-displacement. Single-period interpolation uses averaged clamped knots;
-repeated interpolation uses cyclic uniform knots and must preserve position
-continuation and analytic derivative continuity at the seam.
+result a valid non-rational subset of NURBS. Closed input has coincident first
+and final positions at strictly increasing stations; open input may end
+elsewhere. Both forms use averaged clamped knots.
 
 ## SVG graphics
 

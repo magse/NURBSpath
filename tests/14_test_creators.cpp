@@ -19,13 +19,12 @@ int main() {
         {1.0, 1.0},
         {4.0, 4.0, 8.0, 8.0},
         1);
-    auto periodic_spline_2d = nurbspath::make_nurbs_spline2<real>(
-        {{1.0, 0.0}, {0.0, 1.0}, {-1.0, 0.0}, {1.0, 0.0}},
+    auto closed_spline_2d = nurbspath::make_nurbs_spline2<real>(
+        {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}, {0.0, 0.0}},
         {1.0, 1.0, 1.0, 1.0},
-        {-1.0, 0.0, 1.0, 2.0, 3.0, 4.0},
+        {0.0, 0.0, 1.0, 2.0, 3.0, 3.0},
         1,
-        true,
-        std::size_t(2));
+        true);
     const std::valarray<point2<real>> valarray_control_points_2d{
         point2<real>{0.0, 0.0}, point2<real>{2.0, 1.0}};
     const std::valarray<real> valarray_weights_2d{1.0, 1.0};
@@ -35,22 +34,21 @@ int main() {
         valarray_weights_2d,
         valarray_knots_2d,
         1);
-    const std::valarray<point2<real>> periodic_valarray_controls_2d{
+    const std::valarray<point2<real>> closed_valarray_controls_2d{
+        point2<real>{0.0, 0.0},
         point2<real>{1.0, 0.0},
         point2<real>{0.0, 1.0},
-        point2<real>{-1.0, 0.0},
-        point2<real>{1.0, 0.0}};
-    const std::valarray<real> periodic_valarray_weights_2d{
+        point2<real>{0.0, 0.0}};
+    const std::valarray<real> closed_valarray_weights_2d{
         1.0, 1.0, 1.0, 1.0};
-    const std::valarray<real> periodic_valarray_knots_2d{
-        -1.0, 0.0, 1.0, 2.0, 3.0, 4.0};
-    auto periodic_valarray_spline_2d = nurbspath::make_nurbs_spline2(
-        periodic_valarray_controls_2d,
-        periodic_valarray_weights_2d,
-        periodic_valarray_knots_2d,
+    const std::valarray<real> closed_valarray_knots_2d{
+        0.0, 0.0, 1.0, 2.0, 3.0, 3.0};
+    auto closed_valarray_spline_2d = nurbspath::make_nurbs_spline2(
+        closed_valarray_controls_2d,
+        closed_valarray_weights_2d,
+        closed_valarray_knots_2d,
         1,
-        true,
-        std::size_t(2));
+        true);
 
     static_assert(std::is_same_v<
         decltype(vector_2d), std::unique_ptr<vector2<real>>>);
@@ -73,11 +71,10 @@ int main() {
                  "make_nurbs_spline2 value");
     check_point2(valarray_spline_2d->evaluate(6.0), {1.0, 0.5}, 1e-12,
                  "make_nurbs_spline2 valarray value");
-    check(periodic_spline_2d->is_closed() && periodic_spline_2d->is_periodic() &&
-              periodic_spline_2d->period_count() == 2,
-          "make_nurbs_spline2 forwards closure and period count");
-    check(periodic_valarray_spline_2d->period_count() == 2,
-          "2D valarray factory forwards period count");
+    check(closed_spline_2d->is_closed(),
+          "make_nurbs_spline2 forwards closure");
+    check(closed_valarray_spline_2d->is_closed(),
+          "2D valarray factory forwards closure");
 
     auto vector_3d = nurbspath::make_vector3(1.0, 2.0, 2.0);
     auto point_3d = nurbspath::make_point3(2.0, -1.0, 3.0);
@@ -96,16 +93,15 @@ int main() {
         {1.0, 1.0},
         {2.0, 2.0, 6.0, 6.0},
         1);
-    auto periodic_spline_3d = nurbspath::make_nurbs_spline3<real>(
-        {{1.0, 0.0, 0.0},
+    auto closed_spline_3d = nurbspath::make_nurbs_spline3<real>(
+        {{0.0, 0.0, 0.0},
+         {1.0, 0.0, 0.0},
          {0.0, 1.0, 0.0},
-         {-1.0, 0.0, 0.0},
-         {1.0, 0.0, 0.0}},
+         {0.0, 0.0, 0.0}},
         {1.0, 1.0, 1.0, 1.0},
-        {-1.0, 0.0, 1.0, 2.0, 3.0, 4.0},
+        {0.0, 0.0, 1.0, 2.0, 3.0, 3.0},
         1,
-        true,
-        std::size_t(2));
+        true);
     const std::valarray<point3<real>> valarray_control_points_3d{
         point3<real>{0.0, 0.0, 0.0}, point3<real>{2.0, 4.0, 6.0}};
     const std::valarray<real> valarray_weights_3d{1.0, 1.0};
@@ -115,22 +111,21 @@ int main() {
         valarray_weights_3d,
         valarray_knots_3d,
         1);
-    const std::valarray<point3<real>> periodic_valarray_controls_3d{
+    const std::valarray<point3<real>> closed_valarray_controls_3d{
+        point3<real>{0.0, 0.0, 0.0},
         point3<real>{1.0, 0.0, 0.0},
         point3<real>{0.0, 1.0, 0.0},
-        point3<real>{-1.0, 0.0, 0.0},
-        point3<real>{1.0, 0.0, 0.0}};
-    const std::valarray<real> periodic_valarray_weights_3d{
+        point3<real>{0.0, 0.0, 0.0}};
+    const std::valarray<real> closed_valarray_weights_3d{
         1.0, 1.0, 1.0, 1.0};
-    const std::valarray<real> periodic_valarray_knots_3d{
-        -1.0, 0.0, 1.0, 2.0, 3.0, 4.0};
-    auto periodic_valarray_spline_3d = nurbspath::make_nurbs_spline3(
-        periodic_valarray_controls_3d,
-        periodic_valarray_weights_3d,
-        periodic_valarray_knots_3d,
+    const std::valarray<real> closed_valarray_knots_3d{
+        0.0, 0.0, 1.0, 2.0, 3.0, 3.0};
+    auto closed_valarray_spline_3d = nurbspath::make_nurbs_spline3(
+        closed_valarray_controls_3d,
+        closed_valarray_weights_3d,
+        closed_valarray_knots_3d,
         1,
-        true,
-        std::size_t(2));
+        true);
 
     static_assert(std::is_same_v<
         decltype(vector_3d), std::unique_ptr<vector3<real>>>);
@@ -161,11 +156,10 @@ int main() {
                 "make_nurbs_spline3 value");
     check_point(valarray_spline_3d->evaluate(4.0), {1.0, 2.0, 3.0}, 1e-12,
                 "make_nurbs_spline3 valarray value");
-    check(periodic_spline_3d->is_closed() && periodic_spline_3d->is_periodic() &&
-              periodic_spline_3d->period_count() == 2,
-          "make_nurbs_spline3 forwards closure and period count");
-    check(periodic_valarray_spline_3d->period_count() == 2,
-          "3D valarray factory forwards period count");
+    check(closed_spline_3d->is_closed(),
+          "make_nurbs_spline3 forwards closure");
+    check(closed_valarray_spline_3d->is_closed(),
+          "3D valarray factory forwards closure");
 
     auto zero_vector_2d = nurbspath::make_vector2<real>();
     auto zero_point_2d = nurbspath::make_point2<real>();

@@ -3,7 +3,6 @@
 #include "test_support.hpp"
 
 #include <cmath>
-#include <stdexcept>
 
 namespace {
 
@@ -87,8 +86,7 @@ int main() {
         {1.0, 1.0, 1.0, 1.0},
         {0.0, 0.0, 1.0, 2.0, 3.0, 3.0},
         1,
-        true,
-        std::size_t(1));
+        true);
     const auto seam_hits = nurbspath::intersect_spline_circle(
         seam_contact, unit_circle, settings);
     check(seam_hits.points.size() == 1 &&
@@ -117,31 +115,6 @@ int main() {
     check_near(spline_distance.s, 12.0, 1e-6,
                "2D point-spline native parameter");
 
-    const nurbs_spline2<real> unlimited(
-        {{0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}},
-        {1.0, 1.0, 1.0},
-        {-1.0, 0.0, 1.0, 2.0, 3.0},
-        1,
-        false,
-        std::size_t(0));
-    bool rejected_unlimited_intersection = false;
-    try {
-        static_cast<void>(
-            nurbspath::intersect_spline_circle(unlimited, unit_circle, settings));
-    } catch (const std::domain_error&) {
-        rejected_unlimited_intersection = true;
-    }
-    check(rejected_unlimited_intersection,
-          "2D whole-domain intersection rejects unlimited repetition");
-    bool rejected_unlimited_distance = false;
-    try {
-        static_cast<void>(nurbspath::distance_to_spline(
-            point2<real>::origin(), unlimited, settings));
-    } catch (const std::domain_error&) {
-        rejected_unlimited_distance = true;
-    }
-    check(rejected_unlimited_distance,
-          "2D whole-domain distance rejects unlimited repetition");
 
     static_assert(has_intersection_query<ray2<real>, circle2<real>>);
     static_assert(!has_intersection_query<ray2<real>, sphere3<real>>);

@@ -23,7 +23,7 @@ int main() {
     check(nurbspath::intersect_spline_plane(line, plane, settings).points.size() == 1,
           "float geometry template");
 
-    const auto periodic = nurbspath::nurbs_spline3<float>::interpolate(
+    const auto closed = nurbspath::nurbs_spline3<float>::interpolate(
         {float_point{1.0F, 0.0F, 0.0F},
          float_point{0.0F, 1.0F, 0.0F},
          float_point{-1.0F, 0.0F, 0.0F},
@@ -32,12 +32,10 @@ int main() {
         {0.0F, 1.0F, 2.0F, 3.0F, 4.0F},
         3,
         true,
-        std::size_t(2),
         1e-5F);
-    check(periodic.is_periodic() &&
-              periodic.evaluate(4.5F).approximately_equal(
-                  periodic.evaluate(0.5F), 1e-4F),
-          "float periodic spline advances to its next period");
+    check(closed.is_closed() &&
+              closed.get_start().approximately_equal(closed.get_end(), 1e-4F),
+          "float closed spline preserves its endpoint seam");
 
     const auto view = nurbspath::svg_view3<float>::orthographic(
         float_point{3.0F, -4.0F, 2.0F},

@@ -124,20 +124,5 @@ int main() {
     }
     check(rejected_options, "flat canvas rejects invalid graphics options");
 
-    const nurbs_spline2<real> unlimited(
-        {{0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}},
-        {1.0, 1.0, 1.0},
-        {-1.0, 0.0, 1.0, 2.0, 3.0},
-        1,
-        false,
-        std::size_t(0));
-    bool rejected_unlimited_spline = false;
-    try {
-        canvas.add(unlimited);
-    } catch (const std::domain_error&) {
-        rejected_unlimited_spline = true;
-    }
-    check(rejected_unlimited_spline,
-          "flat SVG rendering rejects an unlimited spline domain");
     return finish("15_test_svg_canvas2");
 }

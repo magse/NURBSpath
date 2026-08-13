@@ -488,13 +488,8 @@ public:
     /**
      * @brief Add a native 2D spline with solid curve and control lines.
      * @param spline NURBS spline in the independent 2D world.
-     * @throws std::domain_error When the spline repeats without a finite limit.
      */
     void add(const nurbs_spline2<REAL>& spline) {
-        if (spline.period_count() == 0) {
-            throw std::domain_error(
-                "SVG rendering requires a finite 2D spline domain");
-        }
         const auto& control_points = spline.control_points();
         for (std::size_t index = 1; index < control_points.size(); ++index) {
             append_world_segment(
@@ -780,7 +775,6 @@ private:
  * @param entity Entity in the independent 2D world.
  * @param options Solid-line styling and spline tessellation controls.
  * @return Complete self-contained flat SVG XML string.
- * @throws std::domain_error When entity is an unlimited repeated spline.
  */
 template <std::floating_point REAL, typename ENTITY>
     requires detail::svg_canvas_entity2<ENTITY, REAL>
@@ -923,13 +917,8 @@ public:
     /**
      * @brief Add control geometry, a tessellated curve, and endpoint dots.
      * @param spline NURBS curve to visualize over its active domain.
-     * @throws std::domain_error When the spline repeats without a finite limit.
      */
     void add(const nurbs_spline3<REAL>& spline) {
-        if (spline.period_count() == 0) {
-            throw std::domain_error(
-                "SVG rendering requires a finite spline domain");
-        }
         const auto& control_points = spline.control_points();
         for (std::size_t index = 1; index < control_points.size(); ++index) {
             append_world_dashed_segment(
@@ -1054,13 +1043,8 @@ public:
      *
      * @param plane Plane whose parameter frame embeds the independent 2D world.
      * @param spline NURBS spline in the 2D world.
-     * @throws std::domain_error When the spline repeats without a finite limit.
      */
     void add(const plane3<REAL>& plane, const nurbs_spline2<REAL>& spline) {
-        if (spline.period_count() == 0) {
-            throw std::domain_error(
-                "SVG rendering requires a finite 2D spline domain");
-        }
         const nurbs_spline3<REAL> projected_spline = project(plane, spline);
         const auto& control_points = projected_spline.control_points();
         for (std::size_t index = 1; index < control_points.size(); ++index) {
@@ -1637,7 +1621,6 @@ private:
  * @param entity Entity to render.
  * @param options Styling and tessellation controls.
  * @return Complete self-contained SVG XML string.
- * @throws std::domain_error When entity is an unlimited repeated spline.
  */
 template <std::floating_point REAL, typename ENTITY>
 [[nodiscard]] std::string to_svg(
@@ -1658,7 +1641,6 @@ template <std::floating_point REAL, typename ENTITY>
  * @param entity Entity in the independent 2D world.
  * @param options Styling and tessellation controls.
  * @return Complete self-contained SVG XML string.
- * @throws std::domain_error When entity is an unlimited repeated spline.
  */
 template <std::floating_point REAL, typename ENTITY>
 [[nodiscard]] std::string to_svg(

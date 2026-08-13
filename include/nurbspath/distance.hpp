@@ -105,7 +105,6 @@ template <std::floating_point REAL>
  * @param settings Numerical tolerances, iterations, and sampling density.
  * @return 2D distance, closest spline point found, and spline parameter.
  * @throws std::invalid_argument When numerical settings are invalid.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] point_spline_distance2<REAL> distance_to_spline(
@@ -113,10 +112,6 @@ template <std::floating_point REAL>
     const nurbs_spline2<REAL>& spline,
     const numerical_settings<REAL>& settings = {}) {
     settings.validate();
-    if (spline.period_count() == 0) {
-        throw std::domain_error(
-            "point-to-2D-spline distance requires a finite spline domain");
-    }
     const auto squared_distance_at = [&](REAL s) {
         return distance_squared(point, spline.evaluate(s));
     };
@@ -228,7 +223,6 @@ template <std::floating_point REAL>
  * @param settings Numerical tolerances, iterations, and sampling density.
  * @return Distance, closest point found, and spline parameter.
  * @throws std::invalid_argument When numerical settings are invalid.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] point_spline_distance3<REAL> distance_to_spline(
@@ -236,10 +230,6 @@ template <std::floating_point REAL>
     const nurbs_spline3<REAL>& spline,
     const numerical_settings<REAL>& settings = {}) {
     settings.validate();
-    if (spline.period_count() == 0) {
-        throw std::domain_error(
-            "point-to-spline distance requires a finite spline domain");
-    }
     const auto squared_distance_at = [&](REAL s) {
         return distance_squared(point, spline.evaluate(s));
     };
@@ -324,7 +314,6 @@ template <std::floating_point REAL>
  * @param spline Target NURBS curve.
  * @param settings Numerical controls for sampled minimization.
  * @return Tolerance-adjusted nonnegative distance.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] REAL distance(
@@ -357,7 +346,6 @@ template <std::floating_point REAL>
  * @param spline Target spline in the same 2D world.
  * @param settings Numerical controls for sampled minimization.
  * @return Tolerance-adjusted nonnegative 2D distance.
- * @throws std::domain_error When the spline repeats without a finite limit.
  */
 template <std::floating_point REAL>
 [[nodiscard]] REAL distance(

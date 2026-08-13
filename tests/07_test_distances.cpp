@@ -2,8 +2,6 @@
 
 #include "test_support.hpp"
 
-#include <stdexcept>
-
 int main() {
     using namespace test_support;
 
@@ -35,21 +33,5 @@ int main() {
                    point3<real>{0.0, 0.0, 5e-11}, plane, 1e-9),
                0.0, 0.0, "distance tolerance snaps to zero");
 
-    const nurbs_spline3<real> unlimited(
-        {{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {2.0, 0.0, 0.0}},
-        {1.0, 1.0, 1.0},
-        {-1.0, 0.0, 1.0, 2.0, 3.0},
-        1,
-        false,
-        std::size_t(0));
-    bool rejected_unlimited = false;
-    try {
-        static_cast<void>(nurbspath::distance_to_spline(
-            point3<real>::origin(), unlimited, settings));
-    } catch (const std::domain_error&) {
-        rejected_unlimited = true;
-    }
-    check(rejected_unlimited,
-          "3D whole-domain distance rejects unlimited repetition");
     return finish("07_test_distances");
 }

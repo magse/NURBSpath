@@ -1,7 +1,6 @@
 #include <nurbspath/config.hpp>
 #include <nurbspath/nurbspath.hpp>
 
-#include <cstddef>
 #include <iostream>
 #include <vector>
 
@@ -42,24 +41,18 @@ int main() {
     std::cout << "distance from query to path: " << closest.distance
               << " at s=" << closest.s << '\n';
 
-    // Three periods of an open curve are connected by translating each new
-    // copy so that it starts exactly where the preceding copy ended.
-    const auto repeated_path = nurbspath::nurbs_spline2<real>::interpolate(
-        {{0.0, 0.0},
-         {1.0, 1.0},
-         {2.0, 0.0},
-         {3.0, -1.0},
-         {4.0, 0.0}},
+    const auto closed_path = nurbspath::nurbs_spline2<real>::interpolate(
+        {{1.0, 0.0},
+         {0.0, 1.0},
+         {-1.0, 0.0},
+         {0.0, -1.0},
+         {1.0, 0.0}},
         {0.0, 1.0, 2.0, 3.0, 4.0},
         3,
-        false,
-        std::size_t{3});
-    const point2<real> second_period_point = repeated_path.point_at(4.5);
-    std::cout << "repeated path: periods=" << repeated_path.period_count()
-              << " closed=" << repeated_path.is_closed()
-              << " periodic=" << repeated_path.is_periodic()
-              << " end=(" << repeated_path.get_end().x() << ", "
-              << repeated_path.get_end().y() << ")"
-              << " point(4.5)=(" << second_period_point.x() << ", "
-              << second_period_point.y() << ")\n";
+        true);
+    std::cout << "closed path: closed=" << closed_path.is_closed()
+              << " start=(" << closed_path.get_start().x() << ", "
+              << closed_path.get_start().y() << ")"
+              << " end=(" << closed_path.get_end().x() << ", "
+              << closed_path.get_end().y() << ")\n";
 }
