@@ -1,0 +1,45 @@
+#pragma once
+
+/**
+ * @file config.hpp
+ * @brief CMake-refreshed nurbspath version and Git metadata.
+ *
+ * This file is generated during CMake configuration. Do not edit the generated
+ * build-tree copy; edit `cmake/config.hpp.in` instead.
+ */
+
+/** @brief Library semantic-version major component. */
+#define NURBSPATH_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+
+/** @brief Library semantic-version minor component. */
+#define NURBSPATH_VERSION_MINOR @PROJECT_VERSION_MINOR@
+
+/** @brief Library semantic-version patch component. */
+#define NURBSPATH_VERSION_PATCH @PROJECT_VERSION_PATCH@
+
+/** @brief Complete library semantic-version string. */
+#define NURBSPATH_VERSION_STRING "@PROJECT_VERSION@"
+
+/** @brief Integer library version encoded as `major*10000 + minor*100 + patch`. */
+#define NURBSPATH_VERSION_NUMBER @NURBSPATH_VERSION_NUMBER@
+
+/** @brief Full Git commit hash, or `unborn` before the first commit. */
+#define NURBSPATH_GIT_COMMIT "@NURBSPATH_GIT_COMMIT@"
+
+/** @brief Short Git commit hash, or `unborn` before the first commit. */
+#define NURBSPATH_GIT_COMMIT_SHORT "@NURBSPATH_GIT_COMMIT_SHORT@"
+
+/** @brief Git tag/hash description including the dirty-worktree suffix. */
+#define NURBSPATH_GIT_DESCRIBE "@NURBSPATH_GIT_DESCRIBE@"
+
+/** @brief One when uncommitted or untracked repository changes were detected. */
+#define NURBSPATH_GIT_DIRTY @NURBSPATH_GIT_DIRTY@
+
+/** @brief One when the repository has a resolvable HEAD commit. */
+#define NURBSPATH_GIT_COMMIT_AVAILABLE @NURBSPATH_GIT_COMMIT_AVAILABLE@
+
+/** @brief Library version combined with the current Git description. */
+#define NURBSPATH_GIT_VERSION "@NURBSPATH_GIT_VERSION@"
+
+/** @brief One for this CMake-refreshed header. */
+#define NURBSPATH_CONFIG_GENERATED 1
