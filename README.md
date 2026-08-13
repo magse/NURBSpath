@@ -6,6 +6,12 @@ provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
 projection through a `plane3` is their only entity-conversion bridge.
 
+The project is intended as a supporting geometry library for software focused
+on the mechatronic design of 3D-printed robotic arms, crawlers, and
+unconventional gearboxes. [NURBS](https://en.wikipedia.org/wiki/Non-uniform_rational_B-spline)
+geometry is considered a key technique for automating the design of such
+machinery.
+
 This project was created with significant support from ChatGPT. That support
 was provided through OpenAI Codex, using the GPT-5 model in an agentic
 software-development setting.
