@@ -1,10 +1,14 @@
 #pragma once
 
 #include "nurbspath/config.hpp"
+#include "nurbspath/serialization.hpp"
 #include "nurbspath/vector2.hpp"
 
+#include <array>
 #include <concepts>
 #include <cstddef>
+#include <istream>
+#include <ostream>
 #include <stdexcept>
 
 namespace nurbspath {
@@ -45,6 +49,70 @@ public:
     constexpr void set_x(REAL value) noexcept { x_ = value; }
     /** @brief Set the Y coordinate. @param value New Y coordinate. */
     constexpr void set_y(REAL value) noexcept { y_ = value; }
+
+    /**
+     * @brief Write the coordinates in CSV, TSV, or whitespace-delimited text.
+     * @param output Destination text stream.
+     * @param format Delimited text format; CSV is the default.
+     * @param decimal_places Nonnegative number of digits after the decimal point;
+     * six by default.
+     * @return Reference to output.
+     * @throws std::invalid_argument When format is unsupported or
+     * decimal_places is negative.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    std::ostream& csv_write(
+        std::ostream& output,
+        text_format format = text_format::csv,
+        std::streamsize decimal_places = 6) const {
+        return detail::write_text_coordinates(
+            output, std::array<REAL, 2>{x_, y_}, format, decimal_places);
+    }
+
+    /**
+     * @brief Read the coordinates from CSV, TSV, or whitespace-delimited text.
+     * @param input Source text stream.
+     * @param format Delimited text format; CSV is the default.
+     * @return Reference to input. This point changes only after a complete record.
+     * @throws std::invalid_argument When format is unsupported.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    std::istream& csv_read(
+        std::istream& input,
+        text_format format = text_format::csv) {
+        std::array<REAL, 2> coordinates{};
+        detail::read_text_coordinates(input, coordinates, format);
+        if (input) {
+            *this = {coordinates[0], coordinates[1]};
+        }
+        return input;
+    }
+
+    /**
+     * @brief Write two native `REAL` values in X/Y order as binary data.
+     * @param output Destination binary stream.
+     * @return Reference to output.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    std::ostream& write(std::ostream& output) const {
+        return detail::write_binary_coordinates(
+            output, std::array<REAL, 2>{x_, y_});
+    }
+
+    /**
+     * @brief Read two native `REAL` values in X/Y order from binary data.
+     * @param input Source binary stream.
+     * @return Reference to input. This point changes only after a complete record.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    std::istream& read(std::istream& input) {
+        std::array<REAL, 2> coordinates{};
+        detail::read_binary_coordinates(input, coordinates);
+        if (input) {
+            *this = {coordinates[0], coordinates[1]};
+        }
+        return input;
+    }
 
     /**
      * @brief Access a coordinate by index.
@@ -113,6 +181,32 @@ private:
     REAL x_ = REAL(0);
     REAL y_ = REAL(0);
 };
+
+/**
+ * @brief Write a 2D point as whitespace-separated X and Y coordinates.
+ * @tparam REAL Floating-point scalar type.
+ * @param output Destination stream.
+ * @param value Point to write.
+ * @return Reference to output.
+ * @throws std::ios_base::failure When enabled by the stream exception mask.
+ */
+template <std::floating_point REAL>
+std::ostream& operator<<(std::ostream& output, const point2<REAL>& value) {
+    return output << value.x() << ' ' << value.y();
+}
+
+/**
+ * @brief Read whitespace-separated X and Y coordinates into a 2D point.
+ * @tparam REAL Floating-point scalar type.
+ * @param input Source stream.
+ * @param value Point updated only when both coordinates are read successfully.
+ * @return Reference to input.
+ * @throws std::ios_base::failure When enabled by the stream exception mask.
+ */
+template <std::floating_point REAL>
+std::istream& operator>>(std::istream& input, point2<REAL>& value) {
+    return value.csv_read(input, text_format::txt);
+}
 
 /** @brief Translate a point by a vector. @param point Point to translate. @param offset Translation vector. @return Translated point. */
 template <std::floating_point REAL>

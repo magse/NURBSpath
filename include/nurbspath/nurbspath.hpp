@@ -20,6 +20,7 @@ namespace nurbspath {}
 #include "nurbspath/projection.hpp"
 #include "nurbspath/ray2.hpp"
 #include "nurbspath/ray3.hpp"
+#include "nurbspath/serialization.hpp"
 #include "nurbspath/sphere3.hpp"
 #include "nurbspath/utility.hpp"
 #include "nurbspath/vector2.hpp"

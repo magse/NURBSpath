@@ -1,11 +1,16 @@
 #pragma once
 
 #include "nurbspath/config.hpp"
+#include "nurbspath/serialization.hpp"
+
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
+#include <istream>
 #include <limits>
+#include <ostream>
 #include <stdexcept>
 
 namespace nurbspath {
@@ -55,6 +60,70 @@ public:
     constexpr void set_y(REAL value) noexcept { y_ = value; }
     /** @brief Set the Z component. @param value New Z component. */
     constexpr void set_z(REAL value) noexcept { z_ = value; }
+
+    /**
+     * @brief Write the components in CSV, TSV, or whitespace-delimited text.
+     * @param output Destination text stream.
+     * @param format Delimited text format; CSV is the default.
+     * @param decimal_places Nonnegative number of digits after the decimal point;
+     * six by default.
+     * @return Reference to output.
+     * @throws std::invalid_argument When format is unsupported or
+     * decimal_places is negative.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    std::ostream& csv_write(
+        std::ostream& output,
+        text_format format = text_format::csv,
+        std::streamsize decimal_places = 6) const {
+        return detail::write_text_coordinates(
+            output, std::array<REAL, 3>{x_, y_, z_}, format, decimal_places);
+    }
+
+    /**
+     * @brief Read the components from CSV, TSV, or whitespace-delimited text.
+     * @param input Source text stream.
+     * @param format Delimited text format; CSV is the default.
+     * @return Reference to input. This vector changes only after a complete record.
+     * @throws std::invalid_argument When format is unsupported.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    std::istream& csv_read(
+        std::istream& input,
+        text_format format = text_format::csv) {
+        std::array<REAL, 3> coordinates{};
+        detail::read_text_coordinates(input, coordinates, format);
+        if (input) {
+            *this = {coordinates[0], coordinates[1], coordinates[2]};
+        }
+        return input;
+    }
+
+    /**
+     * @brief Write three native `REAL` values in X/Y/Z order as binary data.
+     * @param output Destination binary stream.
+     * @return Reference to output.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    std::ostream& write(std::ostream& output) const {
+        return detail::write_binary_coordinates(
+            output, std::array<REAL, 3>{x_, y_, z_});
+    }
+
+    /**
+     * @brief Read three native `REAL` values in X/Y/Z order from binary data.
+     * @param input Source binary stream.
+     * @return Reference to input. This vector changes only after a complete record.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    std::istream& read(std::istream& input) {
+        std::array<REAL, 3> coordinates{};
+        detail::read_binary_coordinates(input, coordinates);
+        if (input) {
+            *this = {coordinates[0], coordinates[1], coordinates[2]};
+        }
+        return input;
+    }
 
     /**
      * @brief Access a component by index.
@@ -314,6 +383,32 @@ private:
     REAL y_ = REAL(0);
     REAL z_ = REAL(0);
 };
+
+/**
+ * @brief Write a 3D vector as whitespace-separated X, Y, and Z components.
+ * @tparam REAL Floating-point scalar type.
+ * @param output Destination stream.
+ * @param value Vector to write.
+ * @return Reference to output.
+ * @throws std::ios_base::failure When enabled by the stream exception mask.
+ */
+template <std::floating_point REAL>
+std::ostream& operator<<(std::ostream& output, const vector3<REAL>& value) {
+    return output << value.x() << ' ' << value.y() << ' ' << value.z();
+}
+
+/**
+ * @brief Read whitespace-separated X, Y, and Z components into a 3D vector.
+ * @tparam REAL Floating-point scalar type.
+ * @param input Source stream.
+ * @param value Vector updated only when all components are read successfully.
+ * @return Reference to input.
+ * @throws std::ios_base::failure When enabled by the stream exception mask.
+ */
+template <std::floating_point REAL>
+std::istream& operator>>(std::istream& input, vector3<REAL>& value) {
+    return value.csv_read(input, text_format::txt);
+}
 
 template <std::floating_point REAL>
 /**

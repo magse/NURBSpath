@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.1.0 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.1.1 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -528,6 +528,34 @@ adds a signed scalar `cross`, left/right perpendicular vectors, and
 boundary as `point3`. `ray2<REAL>` uses forward parameter `s`, and
 `circle2<REAL>` provides `point_at(u)`, `normal_at`, and `parameter_of`.
 
+`point2`, `vector2`, `point3`, and `vector3` support stream insertion and
+extraction with `operator<<` and `operator>>`. Their text format is
+whitespace-separated Cartesian coordinates: `x y` in 2D and `x y z` in 3D.
+Extraction changes a value only after all of its coordinates are read
+successfully.
+
+The same four types provide `csv_write(output, format, decimal_places)` and
+`csv_read(input, format)`, where `format` is `text_format::csv`,
+`text_format::tsv`, or `text_format::txt`. CSV is the default. `csv_write`
+always uses scientific notation; `decimal_places` selects the number of digits
+after the decimal point and defaults to six.
+The methods write or read one coordinate record without adding a line ending.
+For example:
+
+```cpp
+nurbspath::point3<double> point;
+point.csv_read(input, nurbspath::text_format::tsv);
+point.csv_write(output, nurbspath::text_format::csv, 8);
+// 0.00000000e+00,0.00000000e+00,0.00000000e+00
+```
+
+Their `write(output)` and `read(input)` members provide compact binary I/O.
+The binary record contains two or three native `REAL` values in X/Y[/Z] order,
+without a header. It is intended for matching readers and writers and is not
+portable between different scalar types, floating-point representations, or
+byte orders. Text and binary reads leave the existing object unchanged unless
+the complete record is available.
+
 `nurbs_spline2<REAL>` exposes the same rational definition, native domain,
 analytic derivatives, tangent, arc-length approximation, global
 `interpolate`, and `adopt_to_points` operations as the 3D spline, with all
@@ -613,7 +641,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.1.0+v0.1.0`; its commit hash is `unavailable` because a file cannot embed
+`0.1.1+v0.1.1`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated
