@@ -17,6 +17,8 @@ int main() {
           "2D line analytic first derivative");
     check(line.second_derivative(4.0).is_near_zero(1e-12),
           "2D line analytic second derivative");
+    check(line.third_derivative(4.0).is_near_zero(1e-12),
+          "unit-weight 2D line analytic third derivative");
     check_near(line.approximate_arc_length(32), std::sqrt(52.0), 1e-11,
                "2D line approximate arc length");
     check(!line.is_closed(), "ordinary 2D spline is open");
@@ -50,6 +52,60 @@ int main() {
     check_near(quarter_circle.tangent(0.5).dot(middle - point2<real>::origin()),
                0.0, 1e-12,
                "2D circle spline tangent is radial-orthogonal");
+
+    const nurbs_spline2<real> unit_cubic(
+        {{0.0, 0.0}, {1.0, 0.0}, {1.0, 2.0}, {4.0, 3.0}},
+        {1.0, 1.0, 1.0, 1.0},
+        {2.0, 2.0, 2.0, 2.0, 4.0, 4.0, 4.0, 4.0},
+        3);
+    const vector2<real> expected_cubic_third{3.0, -9.0 / 4.0};
+    check(unit_cubic.third_derivative(2.0).approximately_equal(
+              expected_cubic_third, 1e-12) &&
+              unit_cubic.third_derivative(3.0).approximately_equal(
+                  expected_cubic_third, 1e-12) &&
+              unit_cubic.third_derivative(4.0).approximately_equal(
+                  expected_cubic_third, 1e-12),
+          "2D cubic third derivative respects native s and endpoint spans");
+
+    const nurbs_spline2<real> two_span_cubic(
+        {{0.0, 0.0},
+         {0.0, 0.0},
+         {0.0, 0.0},
+         {1.0, 0.0},
+         {1.0, 0.0},
+         {1.0, 0.0},
+         {1.0, 2.0}},
+        {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+        {0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.5, 1.0, 1.0, 1.0, 1.0},
+        3);
+    check(two_span_cubic.third_derivative(0.25).approximately_equal(
+              {48.0, 0.0}, 1e-12) &&
+              two_span_cubic.third_derivative(0.5).approximately_equal(
+                  {0.0, 96.0}, 1e-12) &&
+              two_span_cubic.third_derivative(1.0).approximately_equal(
+                  {0.0, 96.0}, 1e-12),
+          "2D third derivative selects the right span at an internal knot");
+
+    const nurbs_spline2<real> rational_line(
+        {{0.0, 0.0}, {1.0, 2.0}},
+        {1.0, 2.0},
+        {0.0, 0.0, 1.0, 1.0},
+        1);
+    check(rational_line.second_derivative(0.5).approximately_equal(
+              {-32.0 / 27.0, -64.0 / 27.0}, 1e-12),
+          "degree-one rational 2D spline has an analytic second derivative");
+    check(rational_line.third_derivative(0.5).approximately_equal(
+              {64.0 / 27.0, 128.0 / 27.0}, 1e-12),
+          "degree-one rational 2D spline has an analytic third derivative");
+
+    const nurbs_spline2<real> rational_cubic(
+        {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}, {0.0, 0.0}},
+        {1.0, 1.0, 1.0, 5.0},
+        {0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0},
+        3);
+    check(rational_cubic.third_derivative(0.5).approximately_equal(
+              {32.0, 8.0}, 1e-12),
+          "rational 2D cubic third derivative uses all quotient-rule terms");
 
     const nurbs_spline2<real> closed_polyline(
         {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}, {0.0, 0.0}},

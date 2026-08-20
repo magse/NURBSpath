@@ -25,7 +25,7 @@ template <std::floating_point REAL>
 [[nodiscard]] constexpr vector3<REAL> project(
     const plane3<REAL>& plane,
     const vector2<REAL>& vector) noexcept {
-    return vector.x() * plane.u_direction() + vector.y() * plane.v_direction();
+    return vector.x * plane.u_direction() + vector.y * plane.v_direction();
 }
 
 /**
@@ -39,7 +39,7 @@ template <std::floating_point REAL>
 [[nodiscard]] constexpr point3<REAL> project(
     const plane3<REAL>& plane,
     const point2<REAL>& point) noexcept {
-    return plane.point_at(point.x(), point.y());
+    return plane.point_at(point.x, point.y);
 }
 
 /**

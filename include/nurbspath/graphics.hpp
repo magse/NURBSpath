@@ -78,7 +78,7 @@ public:
 
 private:
     void validate() const {
-        if (!std::isfinite(center_.x()) || !std::isfinite(center_.y())) {
+        if (!std::isfinite(center_.x) || !std::isfinite(center_.y)) {
             throw std::invalid_argument("2D SVG view center must be finite");
         }
         if (!(viewport_width_ > REAL(0)) ||
@@ -251,9 +251,9 @@ private:
 
     void validate() const {
         const auto finite_point = [](const point3<REAL>& point) {
-            return std::isfinite(point.x()) &&
-                   std::isfinite(point.y()) &&
-                   std::isfinite(point.z());
+            return std::isfinite(point.x) &&
+                   std::isfinite(point.y) &&
+                   std::isfinite(point.z);
         };
         if (!finite_point(eyepoint_) || !finite_point(lookatpoint_)) {
             throw std::invalid_argument("SVG camera points must be finite");
@@ -578,9 +578,9 @@ private:
         const point2<REAL>& point) const noexcept {
         const REAL canvas_scale = scale();
         const REAL x = static_cast<REAL>(view_.image_width()) / REAL(2) +
-            (point.x() - view_.center().x()) * canvas_scale;
+            (point.x - view_.center().x) * canvas_scale;
         const REAL y = static_cast<REAL>(view_.image_height()) / REAL(2) -
-            (point.y() - view_.center().y()) * canvas_scale;
+            (point.y - view_.center().y) * canvas_scale;
         if (!std::isfinite(x) || !std::isfinite(y)) {
             return std::nullopt;
         }

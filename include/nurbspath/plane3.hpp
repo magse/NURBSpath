@@ -23,41 +23,41 @@ public:
      * The resulting equation is `unit_normal dot world_point = signed_distance`.
      * Its `(u,v)` origin is the closest plane point to the world origin.
      *
-     * @param normal_value Any nonzero plane normal; normalized internally.
+     * @param normal Any nonzero plane normal; normalized internally.
      * @param signed_distance Signed perpendicular distance from world origin.
      * @param tolerance Minimum accepted normal length.
      * @throws std::invalid_argument When distance is non-finite.
      * @throws std::domain_error When normal is too small.
      */
     plane3(
-        const vector3<REAL>& normal_value,
+        const vector3<REAL>& normal,
         REAL signed_distance,
         REAL tolerance = vector3<REAL>::default_tolerance())
         : plane3(
               point_from_normal_and_distance(
-                  normal_value, signed_distance, tolerance),
-              normal_value,
+                  normal, signed_distance, tolerance),
+              normal,
               tolerance) {}
 
     /**
      * @brief Construct a plane from a parameter origin and normal.
-     * @param origin_value World-space point used as `(u,v) = (0,0)`.
-     * @param normal_value Any nonzero plane normal; normalized internally.
+     * @param origin World-space point used as `(u,v) = (0,0)`.
+     * @param normal Any nonzero plane normal; normalized internally.
      * @param tolerance Minimum accepted normal length.
      * @throws std::domain_error When normal is too small.
      */
     plane3(
-        const point3<REAL>& origin_value,
-        const vector3<REAL>& normal_value,
+        const point3<REAL>& origin,
+        const vector3<REAL>& normal,
         REAL tolerance = vector3<REAL>::default_tolerance())
-        : origin_(origin_value), normal_(normal_value.normalized(tolerance)) {
+        : origin_(origin), normal_(normal.normalized(tolerance)) {
         // Pick the Cartesian axis least aligned with the normal.  Its cross
         // product gives a stable first in-plane basis direction.
         const vector3<REAL> helper =
-            std::abs(normal_.x()) <= std::abs(normal_.y()) &&
-                    std::abs(normal_.x()) <= std::abs(normal_.z())
+            std::abs(normal_.x) <= std::abs(normal_.y) &&
+                    std::abs(normal_.x) <= std::abs(normal_.z)
                 ? vector3<REAL>::unit_x()
-                : (std::abs(normal_.y()) <= std::abs(normal_.z())
+                : (std::abs(normal_.y) <= std::abs(normal_.z)
                        ? vector3<REAL>::unit_y()
                        : vector3<REAL>::unit_z());
         u_direction_ = helper.cross(normal_).normalized(tolerance);
@@ -66,18 +66,18 @@ public:
 
     /**
      * @brief Construct a plane with a preferred positive-u direction.
-     * @param origin_value World-space point used as `(u,v) = (0,0)`.
-     * @param normal_value Any nonzero plane normal; normalized internally.
+     * @param origin World-space point used as `(u,v) = (0,0)`.
+     * @param normal Any nonzero plane normal; normalized internally.
      * @param u_hint Direction projected into the plane to define positive u.
      * @param tolerance Minimum accepted normal and projected-u length.
      * @throws std::domain_error When normal or projected u hint is too small.
      */
     plane3(
-        const point3<REAL>& origin_value,
-        const vector3<REAL>& normal_value,
+        const point3<REAL>& origin,
+        const vector3<REAL>& normal,
         const vector3<REAL>& u_hint,
         REAL tolerance = vector3<REAL>::default_tolerance())
-        : origin_(origin_value), normal_(normal_value.normalized(tolerance)) {
+        : origin_(origin), normal_(normal.normalized(tolerance)) {
         // Remove the normal component so the caller's hint lies in the plane.
         u_direction_ = u_hint.rejected_from(normal_, tolerance).normalized(tolerance);
         v_direction_ = normal_.cross(u_direction_);

@@ -2,6 +2,7 @@
 
 #include "test_support.hpp"
 
+#include <limits>
 #include <numbers>
 #include <sstream>
 #include <stdexcept>
@@ -11,8 +12,37 @@
 int main() {
     using namespace test_support;
 
-    const vector2<real> first{3.0, 4.0};
-    const vector2<real> second{-2.0, 1.0};
+    static_assert(std::is_aggregate_v<point2<real>>);
+    static_assert(noexcept(point2<real>{}.magnitude()));
+    static_assert(noexcept(point2<real>{}.manhattan_distance()));
+    static_assert(std::is_same_v<
+                  decltype(point2<real>{}.manhattan_distance()), real>);
+    point2<real> point_components{};
+    check(point_components.x == 0.0 && point_components.y == 0.0,
+          "default 2D point coordinates are zero");
+    point_components.x = 2.0;
+    point_components.y = -3.0;
+    check(point_components == point2<real>{2.0, -3.0},
+          "2D point coordinates are public and mutable");
+    const point2<real> magnitude_point{.x = -3.0, .y = 4.0};
+    check_near(magnitude_point.magnitude(), 5.0, 1e-12,
+               "2D point magnitude is distance from 2D origin");
+    check_near(magnitude_point.manhattan_distance(), 7.0, 1e-12,
+               "2D point Manhattan distance is L1 distance from 2D origin");
+    check(point2<real>::origin().manhattan_distance() == 0.0,
+          "2D origin has zero Manhattan distance");
+
+    static_assert(std::is_aggregate_v<vector2<real>>);
+    vector2<real> components{};
+    check(components.x == 0.0 && components.y == 0.0,
+          "default 2D vector components are zero");
+    components.x = 2.0;
+    components.y = -3.0;
+    check(components == vector2<real>{2.0, -3.0},
+          "2D vector components are public and mutable");
+
+    const vector2<real> first{.x = 3.0, .y = 4.0};
+    const vector2<real> second{.x = -2.0, .y = 1.0};
     check_near(first.length(), 5.0, 1e-12, "2D vector length");
     check_near(first.dot(second), -2.0, 1e-12, "2D dot product");
     check_near(first.cross(second), 11.0, 1e-12, "2D scalar cross product");
@@ -22,11 +52,32 @@ int main() {
           "2D right perpendicular");
     check(first.normalized().approximately_equal({0.6, 0.8}, 1e-12),
           "2D vector normalization");
+    vector2<real> in_place{-3.0, 4.0};
+    static_assert(std::is_void_v<decltype(in_place.normalize())>);
+    in_place.normalize();
+    check(in_place.approximately_equal({-0.6, 0.8}, 1e-12),
+          "2D vector in-place normalization preserves direction");
+    check_near(in_place.length(), 1.0, 1e-12,
+               "2D in-place normalized vector has unit length");
+    vector2<real> zero_vector{};
+    bool rejected_zero_normalization = false;
+    try {
+        zero_vector.normalize();
+    } catch (const std::domain_error&) {
+        rejected_zero_normalization = true;
+    }
+    check(rejected_zero_normalization && zero_vector == vector2<real>{},
+          "2D in-place normalization rejects and preserves zero vector");
+    const real large_component = std::numeric_limits<real>::max() / 2.0;
+    vector2<real> large_vector{large_component, -large_component};
+    large_vector.normalize();
+    check_near(large_vector.length(), 1.0, 1e-12,
+               "2D in-place normalization handles large finite components");
     check_near(vector2<real>::unit_x().signed_angle_to(vector2<real>::unit_y()),
                std::numbers::pi_v<real> / 2.0, 1e-12,
                "2D signed angle");
 
-    const point2<real> point{1.0, 2.0};
+    const point2<real> point{.x = 1.0, .y = 2.0};
     check_point2(point + vector2<real>{2.0, -3.0}, {3.0, -1.0}, 1e-12,
                  "2D point translation");
     check((point2<real>{4.0, 6.0} - point).approximately_equal({3.0, 4.0}),

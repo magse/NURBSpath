@@ -45,6 +45,7 @@ Build/
 release/
 Release/
 build-*/
+xcode/
 
 # CMake generated files
 CMakeFiles/

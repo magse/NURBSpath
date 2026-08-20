@@ -41,48 +41,48 @@ class nurbs_spline2 {
 public:
     /**
      * @brief Construct a 2D NURBS curve from its complete definition.
-     * @param control_points_value Control points in the 2D world.
-     * @param weights_value Positive rational weight for every control point.
-     * @param knots_value Nondecreasing knot vector.
-     * @param degree_value Positive degree below the control-point count.
+     * @param control_points Control points in the 2D world.
+     * @param weights Positive rational weight for every control point.
+     * @param knots Nondecreasing knot vector.
+     * @param degree Positive degree below the control-point count.
      * @param tolerance Positive definition and parameter-boundary tolerance.
      * @throws std::invalid_argument When counts, degree, weights, knots, or tolerance are invalid.
      */
     nurbs_spline2(
-        std::vector<point2<REAL>> control_points_value,
-        std::vector<REAL> weights_value,
-        std::vector<REAL> knots_value,
-        std::size_t degree_value,
+        std::vector<point2<REAL>> control_points,
+        std::vector<REAL> weights,
+        std::vector<REAL> knots,
+        std::size_t degree,
         REAL tolerance = REAL(64) * std::numeric_limits<REAL>::epsilon())
         : nurbs_spline2(
-              std::move(control_points_value),
-              std::move(weights_value),
-              std::move(knots_value),
-              degree_value,
+              std::move(control_points),
+              std::move(weights),
+              std::move(knots),
+              degree,
               false,
               tolerance) {}
 
     /**
      * @brief Construct an open or closed 2D NURBS curve.
-     * @param control_points_value Control points in the 2D world.
-     * @param weights_value Positive rational weight for every control point.
-     * @param knots_value Nondecreasing knot vector.
-     * @param degree_value Positive degree below the control-point count.
+     * @param control_points Control points in the 2D world.
+     * @param weights Positive rational weight for every control point.
+     * @param knots Nondecreasing knot vector.
+     * @param degree Positive degree below the control-point count.
      * @param closed True when the two active-domain endpoints must coincide.
      * @param tolerance Positive validation and parameter-boundary tolerance.
      * @throws std::invalid_argument When the definition or closed seam is invalid.
      */
     nurbs_spline2(
-        std::vector<point2<REAL>> control_points_value,
-        std::vector<REAL> weights_value,
-        std::vector<REAL> knots_value,
-        std::size_t degree_value,
+        std::vector<point2<REAL>> control_points,
+        std::vector<REAL> weights,
+        std::vector<REAL> knots,
+        std::size_t degree,
         bool closed,
         REAL tolerance = REAL(64) * std::numeric_limits<REAL>::epsilon())
-        : control_points_(std::move(control_points_value)),
-          weights_(std::move(weights_value)),
-          knots_(std::move(knots_value)),
-          degree_(degree_value),
+        : control_points_(std::move(control_points)),
+          weights_(std::move(weights)),
+          knots_(std::move(knots)),
+          degree_(degree),
           tolerance_(tolerance),
           closed_(closed) {
         validate_definition();
@@ -143,47 +143,12 @@ public:
      * @throws std::domain_error When the homogeneous weight is near zero.
      */
     [[nodiscard]] spline_derivatives2<REAL> derivatives_at(REAL s) const {
-        const REAL parameter = checked_parameter(s);
-        const std::size_t span = find_span(parameter);
-        const std::size_t requested_order = std::min<std::size_t>(2, degree_);
-        const auto derivatives = basis_function_derivatives(
-            span, parameter, requested_order);
-
-        std::array<vector2<REAL>, 3> numerator{};
-        std::array<REAL, 3> weight_derivative{};
-        for (std::size_t order = 0; order <= requested_order; ++order) {
-            for (std::size_t local = 0; local <= degree_; ++local) {
-                const std::size_t control_index = span - degree_ + local;
-                const REAL coefficient =
-                    derivatives[order][local] * weights_[control_index];
-                const point2<REAL>& control = control_points_[control_index];
-                numerator[order] += coefficient *
-                    vector2<REAL>{control.x(), control.y()};
-                weight_derivative[order] += coefficient;
-            }
-        }
-
-        if (std::abs(weight_derivative[0]) <= tolerance_) {
-            throw std::domain_error("2D NURBS homogeneous weight is near zero");
-        }
-
-        const vector2<REAL> position_vector = numerator[0] / weight_derivative[0];
-        vector2<REAL> first{};
-        vector2<REAL> second{};
-        if (degree_ >= 1) {
-            first = (numerator[1] - weight_derivative[1] * position_vector) /
-                    weight_derivative[0];
-        }
-        if (degree_ >= 2) {
-            second = (numerator[2] - REAL(2) * weight_derivative[1] * first -
-                      weight_derivative[2] * position_vector) /
-                     weight_derivative[0];
-        }
+        const auto derivatives = rational_derivatives_at(s, 2);
 
         return {
-            point2<REAL>{position_vector.x(), position_vector.y()},
-            first,
-            second};
+            point2<REAL>{derivatives[0].x, derivatives[0].y},
+            derivatives[1],
+            derivatives[2]};
     }
 
     /**
@@ -218,6 +183,24 @@ public:
      */
     [[nodiscard]] vector2<REAL> second_derivative(REAL s) const {
         return derivatives_at(s).second;
+    }
+
+    /**
+     * @brief Evaluate the third analytic rational derivative.
+     *
+     * Homogeneous derivatives above the polynomial degree are zero, but the
+     * rational quotient terms can still produce a nonzero third derivative.
+     * At an internal knot without third-order continuity, the result is the
+     * right-hand span derivative; `s_max()` uses the left-hand span.
+     *
+     * @param s Finite parameter in the active knot domain.
+     * @return Third derivative with respect to s in 2D.
+     * @throws std::out_of_range When s is non-finite or lies outside the
+     * configured path's tolerated active domain.
+     * @throws std::domain_error When the homogeneous weight is near zero.
+     */
+    [[nodiscard]] vector2<REAL> third_derivative(REAL s) const {
+        return rational_derivatives_at(s, 3)[3];
     }
 
     /**
@@ -363,8 +346,8 @@ public:
         std::vector<REAL> x_values(point_count);
         std::vector<REAL> y_values(point_count);
         for (std::size_t index = 0; index < point_count; ++index) {
-            x_values[index] = samples[index].x();
-            y_values[index] = samples[index].y();
+            x_values[index] = samples[index].x;
+            y_values[index] = samples[index].y;
         }
         const auto x_controls = solve_linear_system(matrix, x_values, tolerance);
         const auto y_controls = solve_linear_system(matrix, y_values, tolerance);
@@ -445,7 +428,7 @@ private:
                 "2D NURBS knot count must equal control count + degree + 1");
         }
         for (const point2<REAL>& point : control_points_) {
-            if (!std::isfinite(point.x()) || !std::isfinite(point.y())) {
+            if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
                 throw std::invalid_argument("2D NURBS control points must be finite");
             }
         }
@@ -471,7 +454,7 @@ private:
     [[nodiscard]] REAL closure_tolerance() const noexcept {
         REAL scale = REAL(1);
         for (const point2<REAL>& point : control_points_) {
-            scale = std::max({scale, std::abs(point.x()), std::abs(point.y())});
+            scale = std::max({scale, std::abs(point.x), std::abs(point.y)});
         }
         return REAL(16) * tolerance_ * scale;
     }
@@ -600,6 +583,55 @@ private:
             factor *= static_cast<REAL>(p - k);
         }
         return derivatives;
+    }
+
+    [[nodiscard]] std::array<vector2<REAL>, 4> rational_derivatives_at(
+        REAL s,
+        std::size_t requested_order) const {
+        requested_order = std::min<std::size_t>(requested_order, 3);
+        const REAL parameter = checked_parameter(s);
+        const std::size_t span = find_span(parameter);
+        const std::size_t basis_order = std::min(requested_order, degree_);
+        const auto basis_derivatives = basis_function_derivatives(
+            span, parameter, basis_order);
+
+        // Homogeneous orders above the degree remain zero while the rational
+        // quotient recurrence continues through the requested order.
+        std::array<vector2<REAL>, 4> numerator{};
+        std::array<REAL, 4> weight_derivative{};
+        for (std::size_t order = 0; order <= basis_order; ++order) {
+            for (std::size_t local = 0; local <= degree_; ++local) {
+                const std::size_t control_index = span - degree_ + local;
+                const REAL coefficient =
+                    basis_derivatives[order][local] * weights_[control_index];
+                const point2<REAL>& control = control_points_[control_index];
+                numerator[order] += coefficient *
+                    vector2<REAL>{control.x, control.y};
+                weight_derivative[order] += coefficient;
+            }
+        }
+
+        if (std::abs(weight_derivative[0]) <= tolerance_) {
+            throw std::domain_error("2D NURBS homogeneous weight is near zero");
+        }
+
+        std::array<vector2<REAL>, 4> result{};
+        result[0] = numerator[0] / weight_derivative[0];
+        for (std::size_t order = 1; order <= requested_order; ++order) {
+            vector2<REAL> value = numerator[order];
+            REAL binomial = REAL(1);
+            for (std::size_t weight_order = 1;
+                 weight_order <= order;
+                 ++weight_order) {
+                binomial *=
+                    static_cast<REAL>(order + 1 - weight_order) /
+                    static_cast<REAL>(weight_order);
+                value -= binomial * weight_derivative[weight_order] *
+                         result[order - weight_order];
+            }
+            result[order] = value / weight_derivative[0];
+        }
+        return result;
     }
 
     std::vector<point2<REAL>> control_points_;

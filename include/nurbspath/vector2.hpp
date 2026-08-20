@@ -20,25 +20,17 @@ namespace nurbspath {
  *
  * A vector is an offset or direction, not a position. It has no implicit
  * relationship to `vector3`; use `project(plane, vector)` to embed it in a
- * selected three-dimensional plane frame.
+ * selected three-dimensional plane frame. Its components are public,
+ * zero-initialized aggregate members.
  *
  * @tparam REAL Floating-point scalar type.
  */
 template <std::floating_point REAL>
-class vector2 {
-public:
+struct vector2 {
     using value_type = REAL; ///< Floating-point scalar type.
 
-    /** @brief Construct the zero vector. */
-    constexpr vector2() noexcept = default;
-
-    /**
-     * @brief Construct a vector from Cartesian components.
-     * @param x_value X component in the 2D world.
-     * @param y_value Y component in the 2D world.
-     */
-    constexpr vector2(REAL x_value, REAL y_value) noexcept
-        : x_(x_value), y_(y_value) {}
+    REAL x = REAL(0); ///< X component in the 2D world.
+    REAL y = REAL(0); ///< Y component in the 2D world.
 
     /**
      * @brief Compare components exactly.
@@ -46,16 +38,6 @@ public:
      * @return True when both components are exactly equal.
      */
     [[nodiscard]] constexpr bool operator==(const vector2& other) const noexcept = default;
-
-    /** @brief Get the X component. @return X component. */
-    [[nodiscard]] constexpr REAL x() const noexcept { return x_; }
-    /** @brief Get the Y component. @return Y component. */
-    [[nodiscard]] constexpr REAL y() const noexcept { return y_; }
-
-    /** @brief Set the X component. @param value New X component. */
-    constexpr void set_x(REAL value) noexcept { x_ = value; }
-    /** @brief Set the Y component. @param value New Y component. */
-    constexpr void set_y(REAL value) noexcept { y_ = value; }
 
     /**
      * @brief Write the components in CSV, TSV, or whitespace-delimited text.
@@ -73,7 +55,7 @@ public:
         text_format format = text_format::csv,
         std::streamsize decimal_places = 6) const {
         return detail::write_text_coordinates(
-            output, std::array<REAL, 2>{x_, y_}, format, decimal_places);
+            output, std::array<REAL, 2>{x, y}, format, decimal_places);
     }
 
     /**
@@ -103,7 +85,7 @@ public:
      */
     std::ostream& write(std::ostream& output) const {
         return detail::write_binary_coordinates(
-            output, std::array<REAL, 2>{x_, y_});
+            output, std::array<REAL, 2>{x, y});
     }
 
     /**
@@ -131,7 +113,7 @@ public:
         if (index > 1) {
             throw std::out_of_range("vector2 index must be 0 or 1");
         }
-        return index == 0 ? x_ : y_;
+        return index == 0 ? x : y;
     }
 
     /**
@@ -144,14 +126,14 @@ public:
         if (index > 1) {
             throw std::out_of_range("vector2 index must be 0 or 1");
         }
-        return index == 0 ? x_ : y_;
+        return index == 0 ? x : y;
     }
 
     /** @brief Return this vector unchanged. @return A copy of this vector. */
     [[nodiscard]] constexpr vector2 operator+() const noexcept { return *this; }
     /** @brief Negate every component. @return Negated vector. */
     [[nodiscard]] constexpr vector2 operator-() const noexcept {
-        return {-x_, -y_};
+        return {-x, -y};
     }
 
     /**
@@ -160,8 +142,8 @@ public:
      * @return Reference to this vector.
      */
     constexpr vector2& operator+=(const vector2& other) noexcept {
-        x_ += other.x_;
-        y_ += other.y_;
+        x += other.x;
+        y += other.y;
         return *this;
     }
 
@@ -171,8 +153,8 @@ public:
      * @return Reference to this vector.
      */
     constexpr vector2& operator-=(const vector2& other) noexcept {
-        x_ -= other.x_;
-        y_ -= other.y_;
+        x -= other.x;
+        y -= other.y;
         return *this;
     }
 
@@ -182,8 +164,8 @@ public:
      * @return Reference to this vector.
      */
     constexpr vector2& operator*=(REAL scalar) noexcept {
-        x_ *= scalar;
-        y_ *= scalar;
+        x *= scalar;
+        y *= scalar;
         return *this;
     }
 
@@ -197,8 +179,8 @@ public:
         if (scalar == REAL(0)) {
             throw std::domain_error("cannot divide vector2 by zero");
         }
-        x_ /= scalar;
-        y_ /= scalar;
+        x /= scalar;
+        y /= scalar;
         return *this;
     }
 
@@ -208,7 +190,7 @@ public:
      * @return Dot product.
      */
     [[nodiscard]] constexpr REAL dot(const vector2& other) const noexcept {
-        return x_ * other.x_ + y_ * other.y_;
+        return x * other.x + y * other.y;
     }
 
     /**
@@ -217,14 +199,14 @@ public:
      * @return Z component of the corresponding embedded 3D cross product.
      */
     [[nodiscard]] constexpr REAL cross(const vector2& other) const noexcept {
-        return x_ * other.y_ - y_ * other.x_;
+        return x * other.y - y * other.x;
     }
 
     /** @brief Compute squared Euclidean length. @return Squared length. */
     [[nodiscard]] constexpr REAL length_squared() const noexcept { return dot(*this); }
 
     /** @brief Compute Euclidean length. @return Vector length. */
-    [[nodiscard]] REAL length() const noexcept { return std::sqrt(length_squared()); }
+    [[nodiscard]] REAL length() const noexcept { return std::hypot(x, y); }
 
     /**
      * @brief Test whether vector length is within a tolerance of zero.
@@ -251,11 +233,23 @@ public:
     }
 
     /**
+     * @brief Normalize this vector in place using the default vector tolerance.
+     *
+     * This vector is unchanged when normalization fails.
+     *
+     * @throws std::domain_error When length is not greater than
+     * `default_tolerance()`.
+     */
+    void normalize() {
+        *this = normalized();
+    }
+
+    /**
      * @brief Rotate this vector counterclockwise by ninety degrees.
      * @return Left perpendicular vector `(-y,x)`.
      */
     [[nodiscard]] constexpr vector2 perpendicular_left() const noexcept {
-        return {-y_, x_};
+        return {-y, x};
     }
 
     /**
@@ -263,7 +257,7 @@ public:
      * @return Right perpendicular vector `(y,-x)`.
      */
     [[nodiscard]] constexpr vector2 perpendicular_right() const noexcept {
-        return {y_, -x_};
+        return {y, -x};
     }
 
     /**
@@ -350,17 +344,17 @@ public:
      */
     [[nodiscard]] constexpr vector2 component_product(
         const vector2& other) const noexcept {
-        return {x_ * other.x_, y_ * other.y_};
+        return {x * other.x, y * other.y};
     }
 
     /** @brief Get the largest component. @return Largest component value. */
     [[nodiscard]] constexpr REAL max_component() const noexcept {
-        return std::max(x_, y_);
+        return std::max(x, y);
     }
 
     /** @brief Get the smallest component. @return Smallest component value. */
     [[nodiscard]] constexpr REAL min_component() const noexcept {
-        return std::min(x_, y_);
+        return std::min(x, y);
     }
 
     /**
@@ -393,10 +387,6 @@ public:
     [[nodiscard]] static constexpr REAL default_tolerance() noexcept {
         return REAL(64) * std::numeric_limits<REAL>::epsilon();
     }
-
-private:
-    REAL x_ = REAL(0);
-    REAL y_ = REAL(0);
 };
 
 /**
@@ -409,7 +399,7 @@ private:
  */
 template <std::floating_point REAL>
 std::ostream& operator<<(std::ostream& output, const vector2<REAL>& value) {
-    return output << value.x() << ' ' << value.y();
+    return output << value.x << ' ' << value.y;
 }
 
 /**

@@ -122,7 +122,7 @@ continuous global guarantee.
 ## NURBS implementation
 
 2D and 3D positions and derivatives are evaluated from nonzero B-spline basis
-functions. First and second rational derivatives use homogeneous
+functions. First, second, and third rational derivatives use homogeneous
 numerator/weight derivatives and the quotient rule. Do not replace these
 analytic derivatives with finite differences.
 

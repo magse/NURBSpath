@@ -19,26 +19,18 @@ namespace nurbspath {
  * @brief Cartesian three-dimensional vector.
  *
  * The type deliberately models a vector rather than a position. Keeping
- * vectors and points separate prevents nonsensical position operations.
+ * vectors and points separate prevents nonsensical position operations. Its
+ * components are public, zero-initialized aggregate members.
  *
  * @tparam REAL Floating-point scalar type.
  */
 template <std::floating_point REAL>
-class vector3 {
-public:
+struct vector3 {
     using value_type = REAL; ///< Floating-point scalar type.
 
-    /** @brief Construct the zero vector. */
-    constexpr vector3() noexcept = default;
-
-    /**
-     * @brief Construct a vector from Cartesian components.
-     * @param x_value X component.
-     * @param y_value Y component.
-     * @param z_value Z component.
-     */
-    constexpr vector3(REAL x_value, REAL y_value, REAL z_value) noexcept
-        : x_(x_value), y_(y_value), z_(z_value) {}
+    REAL x = REAL(0); ///< X component.
+    REAL y = REAL(0); ///< Y component.
+    REAL z = REAL(0); ///< Z component.
 
     /**
      * @brief Compare components exactly.
@@ -46,20 +38,6 @@ public:
      * @return True when all components are exactly equal.
      */
     [[nodiscard]] constexpr bool operator==(const vector3& other) const noexcept = default;
-
-    /** @brief Get the X component. @return X component. */
-    [[nodiscard]] constexpr REAL x() const noexcept { return x_; }
-    /** @brief Get the Y component. @return Y component. */
-    [[nodiscard]] constexpr REAL y() const noexcept { return y_; }
-    /** @brief Get the Z component. @return Z component. */
-    [[nodiscard]] constexpr REAL z() const noexcept { return z_; }
-
-    /** @brief Set the X component. @param value New X component. */
-    constexpr void set_x(REAL value) noexcept { x_ = value; }
-    /** @brief Set the Y component. @param value New Y component. */
-    constexpr void set_y(REAL value) noexcept { y_ = value; }
-    /** @brief Set the Z component. @param value New Z component. */
-    constexpr void set_z(REAL value) noexcept { z_ = value; }
 
     /**
      * @brief Write the components in CSV, TSV, or whitespace-delimited text.
@@ -77,7 +55,7 @@ public:
         text_format format = text_format::csv,
         std::streamsize decimal_places = 6) const {
         return detail::write_text_coordinates(
-            output, std::array<REAL, 3>{x_, y_, z_}, format, decimal_places);
+            output, std::array<REAL, 3>{x, y, z}, format, decimal_places);
     }
 
     /**
@@ -107,7 +85,7 @@ public:
      */
     std::ostream& write(std::ostream& output) const {
         return detail::write_binary_coordinates(
-            output, std::array<REAL, 3>{x_, y_, z_});
+            output, std::array<REAL, 3>{x, y, z});
     }
 
     /**
@@ -135,7 +113,7 @@ public:
         if (index > 2) {
             throw std::out_of_range("vector3 index must be 0, 1, or 2");
         }
-        return index == 0 ? x_ : (index == 1 ? y_ : z_);
+        return index == 0 ? x : (index == 1 ? y : z);
     }
 
     /**
@@ -148,14 +126,14 @@ public:
         if (index > 2) {
             throw std::out_of_range("vector3 index must be 0, 1, or 2");
         }
-        return index == 0 ? x_ : (index == 1 ? y_ : z_);
+        return index == 0 ? x : (index == 1 ? y : z);
     }
 
     /** @brief Return this vector unchanged. @return A copy of this vector. */
     [[nodiscard]] constexpr vector3 operator+() const noexcept { return *this; }
     /** @brief Negate every component. @return Negated vector. */
     [[nodiscard]] constexpr vector3 operator-() const noexcept {
-        return {-x_, -y_, -z_};
+        return {-x, -y, -z};
     }
 
     /**
@@ -164,9 +142,9 @@ public:
      * @return Reference to this vector.
      */
     constexpr vector3& operator+=(const vector3& other) noexcept {
-        x_ += other.x_;
-        y_ += other.y_;
-        z_ += other.z_;
+        x += other.x;
+        y += other.y;
+        z += other.z;
         return *this;
     }
 
@@ -176,9 +154,9 @@ public:
      * @return Reference to this vector.
      */
     constexpr vector3& operator-=(const vector3& other) noexcept {
-        x_ -= other.x_;
-        y_ -= other.y_;
-        z_ -= other.z_;
+        x -= other.x;
+        y -= other.y;
+        z -= other.z;
         return *this;
     }
 
@@ -188,9 +166,9 @@ public:
      * @return Reference to this vector.
      */
     constexpr vector3& operator*=(REAL scalar) noexcept {
-        x_ *= scalar;
-        y_ *= scalar;
-        z_ *= scalar;
+        x *= scalar;
+        y *= scalar;
+        z *= scalar;
         return *this;
     }
 
@@ -204,9 +182,9 @@ public:
         if (scalar == REAL(0)) {
             throw std::domain_error("cannot divide vector3 by zero");
         }
-        x_ /= scalar;
-        y_ /= scalar;
-        z_ /= scalar;
+        x /= scalar;
+        y /= scalar;
+        z /= scalar;
         return *this;
     }
 
@@ -216,7 +194,7 @@ public:
      * @return Dot product.
      */
     [[nodiscard]] constexpr REAL dot(const vector3& other) const noexcept {
-        return x_ * other.x_ + y_ * other.y_ + z_ * other.z_;
+        return x * other.x + y * other.y + z * other.z;
     }
 
     /**
@@ -226,9 +204,9 @@ public:
      */
     [[nodiscard]] constexpr vector3 cross(const vector3& other) const noexcept {
         return {
-            y_ * other.z_ - z_ * other.y_,
-            z_ * other.x_ - x_ * other.z_,
-            x_ * other.y_ - y_ * other.x_
+            y * other.z - z * other.y,
+            z * other.x - x * other.z,
+            x * other.y - y * other.x
         };
     }
 
@@ -239,7 +217,7 @@ public:
 
     /** @brief Compute Euclidean length. @return Vector length. */
     [[nodiscard]] REAL length() const noexcept {
-        return std::sqrt(length_squared());
+        return std::hypot(x, y, z);
     }
 
     /**
@@ -265,6 +243,18 @@ public:
             throw std::domain_error("cannot normalize a near-zero vector3");
         }
         return *this / magnitude;
+    }
+
+    /**
+     * @brief Normalize this vector in place using the default vector tolerance.
+     *
+     * This vector is unchanged when normalization fails.
+     *
+     * @throws std::domain_error When length is not greater than
+     * `default_tolerance()`.
+     */
+    void normalize() {
+        *this = normalized();
     }
 
     /**
@@ -336,17 +326,17 @@ public:
      */
     [[nodiscard]] constexpr vector3 component_product(
         const vector3& other) const noexcept {
-        return {x_ * other.x_, y_ * other.y_, z_ * other.z_};
+        return {x * other.x, y * other.y, z * other.z};
     }
 
     /** @brief Get the largest component. @return Largest component value. */
     [[nodiscard]] constexpr REAL max_component() const noexcept {
-        return std::max({x_, y_, z_});
+        return std::max({x, y, z});
     }
 
     /** @brief Get the smallest component. @return Smallest component value. */
     [[nodiscard]] constexpr REAL min_component() const noexcept {
-        return std::min({x_, y_, z_});
+        return std::min({x, y, z});
     }
 
     /**
@@ -377,11 +367,6 @@ public:
     [[nodiscard]] static constexpr REAL default_tolerance() noexcept {
         return REAL(64) * std::numeric_limits<REAL>::epsilon();
     }
-
-private:
-    REAL x_ = REAL(0);
-    REAL y_ = REAL(0);
-    REAL z_ = REAL(0);
 };
 
 /**
@@ -394,7 +379,7 @@ private:
  */
 template <std::floating_point REAL>
 std::ostream& operator<<(std::ostream& output, const vector3<REAL>& value) {
-    return output << value.x() << ' ' << value.y() << ' ' << value.z();
+    return output << value.x << ' ' << value.y << ' ' << value.z;
 }
 
 /**

@@ -5,6 +5,7 @@
 #include "nurbspath/vector2.hpp"
 
 #include <array>
+#include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <istream>
@@ -15,23 +16,17 @@ namespace nurbspath {
 
 /**
  * @brief Position in the independent two-dimensional Cartesian world.
+ *
+ * Coordinates are public, zero-initialized aggregate members.
+ *
  * @tparam REAL Floating-point scalar type.
  */
 template <std::floating_point REAL>
-class point2 {
-public:
+struct point2 {
     using value_type = REAL; ///< Floating-point scalar type.
 
-    /** @brief Construct the 2D origin. */
-    constexpr point2() noexcept = default;
-
-    /**
-     * @brief Construct a point from Cartesian coordinates.
-     * @param x_value X coordinate in the 2D world.
-     * @param y_value Y coordinate in the 2D world.
-     */
-    constexpr point2(REAL x_value, REAL y_value) noexcept
-        : x_(x_value), y_(y_value) {}
+    REAL x = REAL(0); ///< X coordinate in the 2D world.
+    REAL y = REAL(0); ///< Y coordinate in the 2D world.
 
     /**
      * @brief Compare coordinates exactly.
@@ -39,16 +34,6 @@ public:
      * @return True when both coordinates are exactly equal.
      */
     [[nodiscard]] constexpr bool operator==(const point2& other) const noexcept = default;
-
-    /** @brief Get the X coordinate. @return X coordinate. */
-    [[nodiscard]] constexpr REAL x() const noexcept { return x_; }
-    /** @brief Get the Y coordinate. @return Y coordinate. */
-    [[nodiscard]] constexpr REAL y() const noexcept { return y_; }
-
-    /** @brief Set the X coordinate. @param value New X coordinate. */
-    constexpr void set_x(REAL value) noexcept { x_ = value; }
-    /** @brief Set the Y coordinate. @param value New Y coordinate. */
-    constexpr void set_y(REAL value) noexcept { y_ = value; }
 
     /**
      * @brief Write the coordinates in CSV, TSV, or whitespace-delimited text.
@@ -66,7 +51,7 @@ public:
         text_format format = text_format::csv,
         std::streamsize decimal_places = 6) const {
         return detail::write_text_coordinates(
-            output, std::array<REAL, 2>{x_, y_}, format, decimal_places);
+            output, std::array<REAL, 2>{x, y}, format, decimal_places);
     }
 
     /**
@@ -96,7 +81,7 @@ public:
      */
     std::ostream& write(std::ostream& output) const {
         return detail::write_binary_coordinates(
-            output, std::array<REAL, 2>{x_, y_});
+            output, std::array<REAL, 2>{x, y});
     }
 
     /**
@@ -124,7 +109,7 @@ public:
         if (index > 1) {
             throw std::out_of_range("point2 index must be 0 or 1");
         }
-        return index == 0 ? x_ : y_;
+        return index == 0 ? x : y;
     }
 
     /**
@@ -137,7 +122,23 @@ public:
         if (index > 1) {
             throw std::out_of_range("point2 index must be 0 or 1");
         }
-        return index == 0 ? x_ : y_;
+        return index == 0 ? x : y;
+    }
+
+    /**
+     * @brief Compute distance from the Cartesian 2D origin.
+     * @return Euclidean magnitude in the coordinate units.
+     */
+    [[nodiscard]] REAL magnitude() const noexcept {
+        return std::hypot(x, y);
+    }
+
+    /**
+     * @brief Compute Manhattan distance from the Cartesian 2D origin.
+     * @return Sum of the absolute coordinate values in the coordinate units.
+     */
+    [[nodiscard]] REAL manhattan_distance() const noexcept {
+        return std::abs(x) + std::abs(y);
     }
 
     /**
@@ -146,8 +147,8 @@ public:
      * @return Reference to this point.
      */
     constexpr point2& operator+=(const vector2<REAL>& offset) noexcept {
-        x_ += offset.x();
-        y_ += offset.y();
+        x += offset.x;
+        y += offset.y;
         return *this;
     }
 
@@ -157,8 +158,8 @@ public:
      * @return Reference to this point.
      */
     constexpr point2& operator-=(const vector2<REAL>& offset) noexcept {
-        x_ -= offset.x();
-        y_ -= offset.y();
+        x -= offset.x;
+        y -= offset.y;
         return *this;
     }
 
@@ -176,10 +177,6 @@ public:
 
     /** @brief Construct the Cartesian 2D origin. @return `(0,0)`. */
     [[nodiscard]] static constexpr point2 origin() noexcept { return {}; }
-
-private:
-    REAL x_ = REAL(0);
-    REAL y_ = REAL(0);
 };
 
 /**
@@ -192,7 +189,7 @@ private:
  */
 template <std::floating_point REAL>
 std::ostream& operator<<(std::ostream& output, const point2<REAL>& value) {
-    return output << value.x() << ' ' << value.y();
+    return output << value.x << ' ' << value.y;
 }
 
 /**
@@ -240,7 +237,7 @@ template <std::floating_point REAL>
 [[nodiscard]] constexpr vector2<REAL> operator-(
     const point2<REAL>& left,
     const point2<REAL>& right) noexcept {
-    return {left.x() - right.x(), left.y() - right.y()};
+    return {left.x - right.x, left.y - right.y};
 }
 
 /** @brief Linearly interpolate points. @param first Position at fraction zero. @param second Position at fraction one. @param fraction Interpolation fraction. @return Interpolated position. */

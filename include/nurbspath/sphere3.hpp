@@ -87,11 +87,11 @@ public:
             throw std::domain_error("sphere parameters are undefined at its center");
         }
 
-        REAL u = std::atan2(radial.y(), radial.x());
+        REAL u = std::atan2(radial.y, radial.x);
         if (u < REAL(0)) {
             u += REAL(2) * std::numbers::pi_v<REAL>;
         }
-        const REAL v = std::asin(std::clamp(radial.z() / magnitude, REAL(-1), REAL(1)));
+        const REAL v = std::asin(std::clamp(radial.z / magnitude, REAL(-1), REAL(1)));
         return {u, v};
     }
 

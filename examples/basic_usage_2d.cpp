@@ -10,16 +10,16 @@ int main() {
     using nurbspath::vector2;
 
     const point2<real> ray_origin{-2.0, 0.0};
-    const vector2<real> ray_direction{1.0, 0.0};
-    const nurbspath::ray2<real> ray(ray_origin, ray_direction);
+    const vector2<real> ray_direction{.x = 1.0, .y = 0.0};
+    const auto ray = nurbspath::make_ray2(ray_origin, ray_direction);
     const nurbspath::circle2<real> circle({0.0, 0.0}, 1.0);
 
-    const auto contacts = nurbspath::intersect_ray_circle(ray, circle);
+    const auto contacts = nurbspath::intersect_ray_circle(*ray, circle);
     std::cout << "ray-circle contacts: " << contacts.points.size() << '\n';
     for (const auto& contact : contacts.points) {
         std::cout << "  s=" << contact.s << " point=("
-                  << contact.point.x() << ", "
-                  << contact.point.y() << ")\n";
+                  << contact.point.x << ", "
+                  << contact.point.y << ")\n";
     }
 
     const std::vector<point2<real>> samples{
@@ -34,7 +34,7 @@ int main() {
     const real s = 1.5;
     const point2<real> path_point = path.point_at(s);
     std::cout << "path(" << s << ") = ("
-              << path_point.x() << ", " << path_point.y() << ")\n";
+              << path_point.x << ", " << path_point.y << ")\n";
 
     const point2<real> query{0.5, 0.0};
     const auto closest = nurbspath::distance_to_spline(query, path);
@@ -51,8 +51,8 @@ int main() {
         3,
         true);
     std::cout << "closed path: closed=" << closed_path.is_closed()
-              << " start=(" << closed_path.get_start().x() << ", "
-              << closed_path.get_start().y() << ")"
-              << " end=(" << closed_path.get_end().x() << ", "
-              << closed_path.get_end().y() << ")\n";
+              << " start=(" << closed_path.get_start().x << ", "
+              << closed_path.get_start().y << ")"
+              << " end=(" << closed_path.get_end().x << ", "
+              << closed_path.get_end().y << ")\n";
 }

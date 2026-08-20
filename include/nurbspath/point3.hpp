@@ -5,6 +5,7 @@
 #include "nurbspath/vector3.hpp"
 
 #include <array>
+#include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <istream>
@@ -15,24 +16,18 @@ namespace nurbspath {
 
 /**
  * @brief Position in the shared Cartesian world coordinate system.
+ *
+ * Coordinates are public, zero-initialized aggregate members.
+ *
  * @tparam REAL Floating-point scalar type.
  */
 template <std::floating_point REAL>
-class point3 {
-public:
+struct point3 {
     using value_type = REAL; ///< Floating-point scalar type.
 
-    /** @brief Construct the world origin. */
-    constexpr point3() noexcept = default;
-
-    /**
-     * @brief Construct a point from Cartesian coordinates.
-     * @param x_value X coordinate.
-     * @param y_value Y coordinate.
-     * @param z_value Z coordinate.
-     */
-    constexpr point3(REAL x_value, REAL y_value, REAL z_value) noexcept
-        : x_(x_value), y_(y_value), z_(z_value) {}
+    REAL x = REAL(0); ///< X coordinate in the 3D world.
+    REAL y = REAL(0); ///< Y coordinate in the 3D world.
+    REAL z = REAL(0); ///< Z coordinate in the 3D world.
 
     /**
      * @brief Compare coordinates exactly.
@@ -40,20 +35,6 @@ public:
      * @return True when all coordinates are exactly equal.
      */
     [[nodiscard]] constexpr bool operator==(const point3& other) const noexcept = default;
-
-    /** @brief Get the X coordinate. @return X coordinate. */
-    [[nodiscard]] constexpr REAL x() const noexcept { return x_; }
-    /** @brief Get the Y coordinate. @return Y coordinate. */
-    [[nodiscard]] constexpr REAL y() const noexcept { return y_; }
-    /** @brief Get the Z coordinate. @return Z coordinate. */
-    [[nodiscard]] constexpr REAL z() const noexcept { return z_; }
-
-    /** @brief Set the X coordinate. @param value New X coordinate. */
-    constexpr void set_x(REAL value) noexcept { x_ = value; }
-    /** @brief Set the Y coordinate. @param value New Y coordinate. */
-    constexpr void set_y(REAL value) noexcept { y_ = value; }
-    /** @brief Set the Z coordinate. @param value New Z coordinate. */
-    constexpr void set_z(REAL value) noexcept { z_ = value; }
 
     /**
      * @brief Write the coordinates in CSV, TSV, or whitespace-delimited text.
@@ -71,7 +52,7 @@ public:
         text_format format = text_format::csv,
         std::streamsize decimal_places = 6) const {
         return detail::write_text_coordinates(
-            output, std::array<REAL, 3>{x_, y_, z_}, format, decimal_places);
+            output, std::array<REAL, 3>{x, y, z}, format, decimal_places);
     }
 
     /**
@@ -101,7 +82,7 @@ public:
      */
     std::ostream& write(std::ostream& output) const {
         return detail::write_binary_coordinates(
-            output, std::array<REAL, 3>{x_, y_, z_});
+            output, std::array<REAL, 3>{x, y, z});
     }
 
     /**
@@ -129,7 +110,7 @@ public:
         if (index > 2) {
             throw std::out_of_range("point3 index must be 0, 1, or 2");
         }
-        return index == 0 ? x_ : (index == 1 ? y_ : z_);
+        return index == 0 ? x : (index == 1 ? y : z);
     }
 
     /**
@@ -142,7 +123,23 @@ public:
         if (index > 2) {
             throw std::out_of_range("point3 index must be 0, 1, or 2");
         }
-        return index == 0 ? x_ : (index == 1 ? y_ : z_);
+        return index == 0 ? x : (index == 1 ? y : z);
+    }
+
+    /**
+     * @brief Compute distance from the Cartesian world origin.
+     * @return Euclidean magnitude in the coordinate units.
+     */
+    [[nodiscard]] REAL magnitude() const noexcept {
+        return std::hypot(x, y, z);
+    }
+
+    /**
+     * @brief Compute Manhattan distance from the Cartesian world origin.
+     * @return Sum of the absolute coordinate values in the coordinate units.
+     */
+    [[nodiscard]] REAL manhattan_distance() const noexcept {
+        return std::abs(x) + std::abs(y) + std::abs(z);
     }
 
     /**
@@ -151,9 +148,9 @@ public:
      * @return Reference to this point.
      */
     constexpr point3& operator+=(const vector3<REAL>& offset) noexcept {
-        x_ += offset.x();
-        y_ += offset.y();
-        z_ += offset.z();
+        x += offset.x;
+        y += offset.y;
+        z += offset.z;
         return *this;
     }
 
@@ -163,9 +160,9 @@ public:
      * @return Reference to this point.
      */
     constexpr point3& operator-=(const vector3<REAL>& offset) noexcept {
-        x_ -= offset.x();
-        y_ -= offset.y();
-        z_ -= offset.z();
+        x -= offset.x;
+        y -= offset.y;
+        z -= offset.z;
         return *this;
     }
 
@@ -183,11 +180,6 @@ public:
 
     /** @brief Construct the Cartesian world origin. @return (0,0,0). */
     [[nodiscard]] static constexpr point3 origin() noexcept { return {}; }
-
-private:
-    REAL x_ = REAL(0);
-    REAL y_ = REAL(0);
-    REAL z_ = REAL(0);
 };
 
 /**
@@ -200,7 +192,7 @@ private:
  */
 template <std::floating_point REAL>
 std::ostream& operator<<(std::ostream& output, const point3<REAL>& value) {
-    return output << value.x() << ' ' << value.y() << ' ' << value.z();
+    return output << value.x << ' ' << value.y << ' ' << value.z;
 }
 
 /**
@@ -268,7 +260,7 @@ template <std::floating_point REAL>
 [[nodiscard]] constexpr vector3<REAL> operator-(
     const point3<REAL>& left,
     const point3<REAL>& right) noexcept {
-    return {left.x() - right.x(), left.y() - right.y(), left.z() - right.z()};
+    return {left.x - right.x, left.y - right.y, left.z - right.z};
 }
 
 template <std::floating_point REAL>

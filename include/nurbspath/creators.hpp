@@ -64,7 +64,7 @@ template <std::floating_point REAL>
  */
 template <std::floating_point REAL>
 [[nodiscard]] std::unique_ptr<vector2<REAL>> make_vector2(REAL x, REAL y) {
-    return std::make_unique<vector2<REAL>>(x, y);
+    return std::make_unique<vector2<REAL>>(vector2<REAL>{x, y});
 }
 
 /**
@@ -86,7 +86,7 @@ template <std::floating_point REAL>
  */
 template <std::floating_point REAL>
 [[nodiscard]] std::unique_ptr<point2<REAL>> make_point2(REAL x, REAL y) {
-    return std::make_unique<point2<REAL>>(x, y);
+    return std::make_unique<point2<REAL>>(point2<REAL>{x, y});
 }
 
 /**
@@ -104,6 +104,26 @@ template <std::floating_point REAL>
     const vector2<REAL>& direction,
     REAL tolerance = vector2<REAL>::default_tolerance()) {
     return std::make_unique<ray2<REAL>>(origin, direction, tolerance);
+}
+
+/**
+ * @brief Allocate a 2D ray defined by two points with unique ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param origin Base point at `s = 0`.
+ * @param through_point Second point, reached at `s = 1`, that defines the
+ * positive ray direction.
+ * @param tolerance Minimum accepted separation between the two points.
+ * @return Unique smart pointer owning the new ray. Its unnormalized direction
+ * is `through_point - origin`.
+ * @throws std::invalid_argument When the point separation is within tolerance
+ * of zero.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::unique_ptr<ray2<REAL>> make_ray2_from_points(
+    const point2<REAL>& origin,
+    const point2<REAL>& through_point,
+    REAL tolerance = vector2<REAL>::default_tolerance()) {
+    return make_ray2<REAL>(origin, through_point - origin, tolerance);
 }
 
 /**
@@ -272,7 +292,7 @@ template <std::floating_point REAL>
     REAL x,
     REAL y,
     REAL z) {
-    return std::make_unique<vector3<REAL>>(x, y, z);
+    return std::make_unique<vector3<REAL>>(vector3<REAL>{x, y, z});
 }
 
 /**
@@ -298,7 +318,7 @@ template <std::floating_point REAL>
     REAL x,
     REAL y,
     REAL z) {
-    return std::make_unique<point3<REAL>>(x, y, z);
+    return std::make_unique<point3<REAL>>(point3<REAL>{x, y, z});
 }
 
 /**
@@ -316,6 +336,26 @@ template <std::floating_point REAL>
     const vector3<REAL>& direction,
     REAL tolerance = vector3<REAL>::default_tolerance()) {
     return std::make_unique<ray3<REAL>>(origin, direction, tolerance);
+}
+
+/**
+ * @brief Allocate a 3D ray defined by two world points with unique ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param origin World-space base point at `s = 0`.
+ * @param through_point Second world point, reached at `s = 1`, that defines the
+ * positive ray direction.
+ * @param tolerance Minimum accepted separation between the two points.
+ * @return Unique smart pointer owning the new ray. Its unnormalized direction
+ * is `through_point - origin`.
+ * @throws std::invalid_argument When the point separation is within tolerance
+ * of zero.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::unique_ptr<ray3<REAL>> make_ray3_from_points(
+    const point3<REAL>& origin,
+    const point3<REAL>& through_point,
+    REAL tolerance = vector3<REAL>::default_tolerance()) {
+    return make_ray3<REAL>(origin, through_point - origin, tolerance);
 }
 
 /**
@@ -385,6 +425,62 @@ template <std::floating_point REAL>
     const vector3<REAL>& u_hint,
     REAL tolerance = vector3<REAL>::default_tolerance()) {
     return std::make_unique<plane3<REAL>>(origin, normal, u_hint, tolerance);
+}
+
+/**
+ * @brief Allocate a plane from a parameter origin, positive-u direction, and
+ * another plane point with unique ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param origin World-space point used as `(u,v) = (0,0)`.
+ * @param u_direction Any nonzero direction defining positive u; normalized
+ * internally.
+ * @param plane_point World-space point whose component perpendicular to the
+ * u-axis defines the positive-v side of the plane.
+ * @param tolerance Minimum accepted u-direction length and perpendicular
+ * distance from `plane_point` to the u-axis.
+ * @return Unique smart pointer owning a plane with a right-handed
+ * `(u,v,normal)` frame.
+ * @throws std::domain_error When the u direction is too small or the plane
+ * point lies within tolerance of the u-axis.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::unique_ptr<plane3<REAL>> make_plane3_from_u_direction(
+    const point3<REAL>& origin,
+    const vector3<REAL>& u_direction,
+    const point3<REAL>& plane_point,
+    REAL tolerance = vector3<REAL>::default_tolerance()) {
+    const vector3<REAL> unit_u = u_direction.normalized(tolerance);
+    const vector3<REAL> plane_offset = plane_point - origin;
+    const vector3<REAL> unit_v =
+        (plane_offset - plane_offset.dot(unit_u) * unit_u).normalized(tolerance);
+    const vector3<REAL> normal = unit_u.cross(unit_v);
+    return std::make_unique<plane3<REAL>>(origin, normal, unit_u);
+}
+
+/**
+ * @brief Allocate a plane from three non-collinear world points with unique
+ * ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param origin World-space point used as `(u,v) = (0,0)`.
+ * @param u_point World-space point for which `u_point - origin` defines the
+ * positive-u direction.
+ * @param plane_point World-space point whose component perpendicular to the
+ * u-axis defines the positive-v side of the plane.
+ * @param tolerance Minimum accepted separation from `origin` to `u_point` and
+ * perpendicular distance from `plane_point` to the u-axis.
+ * @return Unique smart pointer owning a plane with a right-handed
+ * `(u,v,normal)` frame.
+ * @throws std::domain_error When the first two points are within tolerance or
+ * all three points are collinear within tolerance.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::unique_ptr<plane3<REAL>> make_plane3_from_points(
+    const point3<REAL>& origin,
+    const point3<REAL>& u_point,
+    const point3<REAL>& plane_point,
+    REAL tolerance = vector3<REAL>::default_tolerance()) {
+    return make_plane3_from_u_direction<REAL>(
+        origin, u_point - origin, plane_point, tolerance);
 }
 
 /**

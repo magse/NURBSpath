@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.1.1 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.1.2 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -30,9 +30,9 @@ installation, and CMake package consumption.
   products, interpolation, and approximate comparison.
 - `point3<REAL>` as a position type distinct from a direction.
 - `ray3<REAL>` with native parameter coordinate `s`.
-- `nurbs_spline3<REAL>` with rational evaluation, analytic first and second
-  derivatives, unit tangents, approximate arc length, and optional closure. The
-  2D spline provides the same options.
+- `nurbs_spline3<REAL>` with rational evaluation, analytic first, second, and
+  third derivatives, unit tangents, approximate arc length, and optional
+  closure. The 2D spline provides the same options.
 - Global B-spline interpolation through 3D samples at caller-supplied
   arc-length parameter stations.
 - `sphere3<REAL>` parameterized by longitude `u` and latitude `v`.
@@ -80,7 +80,7 @@ Include the complete public API with:
 #include <nurbspath/nurbspath.hpp>
 ```
 
-Every geometry entity also has a constructor-matching allocation helper in
+Every geometry entity also has an initialization-matching allocation helper in
 `creators.hpp`. These helpers return `std::unique_ptr`, making ownership
 explicit without reference-counting overhead:
 
@@ -90,14 +90,32 @@ auto direction = nurbspath::make_vector3<>(1.0, 0.0, 0.0);
 auto ray = nurbspath::make_ray3<>(
     nurbspath::point3<double>{0.0, 0.0, 0.0},
     *direction);
+auto ray_from_points = nurbspath::make_ray3_from_points<>(
+    nurbspath::point3<double>{0.0, 0.0, 0.0},
+    nurbspath::point3<double>{2.0, 1.0, 0.0});
 auto plane = nurbspath::make_plane3<>(
     nurbspath::vector3<double>{0.0, 0.0, 1.0},
     2.0);
+auto plane_from_points = nurbspath::make_plane3_from_points<>(
+    nurbspath::point3<double>{0.0, 0.0, 0.0},
+    nurbspath::point3<double>{2.0, 0.0, 0.0},
+    nurbspath::point3<double>{1.0, 1.0, 0.0});
+auto plane_from_u_direction = nurbspath::make_plane3_from_u_direction<>(
+    nurbspath::point3<double>{0.0, 0.0, 0.0},
+    nurbspath::vector3<double>{1.0, 0.0, 0.0},
+    nurbspath::point3<double>{1.0, 1.0, 0.0});
 ```
 
 Use an explicit scalar argument for zero-value factories, for example
-`make_point2<double>()`. Factory validation and exceptions are identical to the
-underlying constructors.
+`make_point2<double>()`. Factories that directly forward to entity constructors
+preserve their validation and exceptions.
+`make_ray2_from_points` and `make_ray3_from_points` derive the unnormalized
+direction as `through_point - origin`, so the second point is reached at
+`s = 1`. They reject point separations within the selected tolerance.
+`make_plane3_from_points` takes the parameter origin, a point in the positive-u
+direction, and another point on the plane. `make_plane3_from_u_direction`
+replaces the second point with a positive-u direction vector. In both forms,
+the third point's component perpendicular to the u-axis defines positive v.
 
 The 2D and 3D spline factories accept either three `std::vector`
 collections or three `std::valarray` collections for control points, weights,
@@ -142,6 +160,7 @@ const auto value = path.derivatives_at(2.0);
 const point3<real> position = value.point;
 const nurbspath::vector3<real> velocity = value.first;
 const nurbspath::vector3<real> acceleration = value.second;
+const nurbspath::vector3<real> jerk = path.third_derivative(2.0);
 const nurbspath::vector3<real> unit_tangent = path.tangent(2.0);
 ```
 
@@ -195,7 +214,16 @@ evaluation. For a zero-based domain, `get_start()` is the point at `s = 0`.
 
 Position, first derivative, and second derivative are evaluated together by
 `derivatives_at(s)`. Convenience methods `evaluate`, `point_at`,
-`first_derivative`, `second_derivative`, and `tangent` are also available.
+`first_derivative`, `second_derivative`, `third_derivative`, and `tangent` are
+also available.
+
+The third rational derivative is evaluated analytically from homogeneous basis
+derivatives and the quotient rule. It does not require degree three: basis and
+weight derivatives above the polynomial degree are zero, but varying rational
+weights can still produce nonzero higher derivatives. For unit weights, a
+derivative above the polynomial degree is zero. At an internal knot where the
+curve is not third-order continuous, `third_derivative(s)` returns the
+right-hand span value; at `s_max()` it returns the left-hand span value.
 
 ## Rays and surfaces
 
@@ -226,6 +254,14 @@ to world positions. `parameters_of` performs the inverse surface mapping.
 The point-plus-normal constructor chooses a stable `u` direction automatically.
 Its overload with a `u` hint projects that hint into the plane before
 normalizing it.
+
+The `make_plane3_from_points` allocation helper fixes the first point at
+`(u, v) = (0, 0)` and normalizes the direction from the first point to the
+second as positive u. `make_plane3_from_u_direction` accepts that positive-u
+direction directly. For both helpers, the third point need not be perpendicular
+to u: its off-axis component selects positive v, and `u` cross `v` gives the
+normal of the right-handed frame. The helpers reject a near-zero u direction
+and a third point within tolerance of the u-axis.
 
 The normal-plus-distance constructor accepts any finite signed distance and any
 nonzero normal direction or magnitude. It normalizes the supplied normal and
@@ -522,11 +558,16 @@ domain.
 
 ## Public API summary
 
-`vector2<REAL>` mirrors the applicable vector operations in two dimensions and
-adds a signed scalar `cross`, left/right perpendicular vectors, and
-`signed_angle_to`. `point2<REAL>` preserves the same point-versus-vector type
-boundary as `point3`. `ray2<REAL>` uses forward parameter `s`, and
-`circle2<REAL>` provides `point_at(u)`, `normal_at`, and `parameter_of`.
+`vector2<REAL>` is an aggregate with public `x` and `y` components that default
+to zero. It mirrors the applicable vector operations in two dimensions and adds
+a zero-argument `normalize()` operation for in-place unit normalization, a
+signed scalar `cross`, left/right perpendicular vectors, and `signed_angle_to`.
+`point2<REAL>` is likewise an aggregate with public,
+zero-defaulted `x` and `y` coordinates. It preserves the point-versus-vector
+type boundary and provides `magnitude()` as Euclidean distance and
+`manhattan_distance()` as L1 distance from the 2D origin.
+`ray2<REAL>` uses forward parameter `s`, and `circle2<REAL>` provides
+`point_at(u)`, `normal_at`, and `parameter_of`.
 
 `point2`, `vector2`, `point3`, and `vector3` support stream insertion and
 extraction with `operator<<` and `operator>>`. Their text format is
@@ -563,17 +604,24 @@ positions and derivatives remaining two-dimensional. The `project` overloads
 are the explicit bridge from 2D entities to a selected `plane3` embedding and
 preserve spline closure.
 
-`vector3<REAL>` provides `x/y/z`, indexed access, exact equality, unary signs,
+`vector3<REAL>` is an aggregate with public `x`, `y`, and `z` components that
+default to zero. It also provides indexed access, exact equality, unary signs,
 vector addition/subtraction, scalar multiplication/division, `dot`, `cross`,
-`length`, `length_squared`, `normalized`, `is_near_zero`, `projected_onto`,
-`rejected_from`, `reflected`, `angle_to`, `component_product`,
-`min_component`, `max_component`, and `approximately_equal`. Free functions
-provide `dot`, `cross`, and `lerp`, and static constructors provide `zero` and
-the three Cartesian unit vectors.
+`length`, `length_squared`, `normalize`, `normalized`, `is_near_zero`,
+`projected_onto`,
+`rejected_from`, `reflected`, `angle_to`, `component_product`, `min_component`,
+`max_component`, and `approximately_equal`. Free functions provide `dot`,
+`cross`, and `lerp`, and static factory functions provide `zero` and the three
+Cartesian unit vectors. `normalize()` modifies the vector in place using the
+default tolerance and returns no value, while `normalized(tolerance)` returns a
+normalized copy.
 
-`point3<REAL>` provides `x/y/z`, indexed access, exact equality, translation by
-a vector, subtraction of two points to form a vector, `approximately_equal`,
-`origin`, and free `distance`, `distance_squared`, and `lerp` operations.
+`point3<REAL>` is an aggregate with public `x`, `y`, and `z` coordinates that
+default to zero. It provides indexed access, exact equality, translation by a
+vector, subtraction of two points to form a vector, `magnitude()` as Euclidean
+distance and `manhattan_distance()` as L1 distance from the world origin,
+`approximately_equal`, `origin`, and free `distance`, `distance_squared`, and
+`lerp` operations.
 
 `ray3<REAL>` provides `origin`, `direction`, `point_at(s)`, `evaluate(s)`, and a
 unit `tangent`. `sphere3<REAL>` provides `center`, `radius`, `point_at(u, v)`,
@@ -585,7 +633,7 @@ normal form.
 `nurbs_spline3<REAL>` exposes its definition with `control_points`, `weights`,
 `knots`, `degree`, and `tolerance`; its domain with `s_min` and `s_max`; and its
 geometry with `evaluate`, `point_at`, `derivatives_at`,
-`first_derivative`, `second_derivative`, `tangent`, and
+`first_derivative`, `second_derivative`, `third_derivative`, `tangent`, and
 `approximate_arc_length`. Static `interpolate` constructs a new curve, while
 `adopt_to_points` replaces an existing one. Both operations accept a `closed`
 overload. `is_closed()`, `get_start()`, and `get_end()` expose closure and
@@ -602,11 +650,13 @@ provide the separate flat, solid-line renderer that accepts native 2D entities
 only.
 
 `creators.hpp` provides `make_vector2`, `make_point2`, `make_ray2`,
-`make_circle2`, `make_nurbs_spline2`, `make_vector3`, `make_point3`,
-`make_ray3`, `make_sphere3`, all three `make_plane3` constructor forms, and
-`make_nurbs_spline3`. Every function returns a uniquely owning smart pointer.
-The two spline factories provide both `std::vector` and `std::valarray`
-collection overloads, including forms that accept `closed` after `degree`.
+`make_ray2_from_points`, `make_circle2`, `make_nurbs_spline2`, `make_vector3`,
+`make_point3`, `make_ray3`, `make_ray3_from_points`, `make_sphere3`, all three
+`make_plane3` constructor forms, `make_plane3_from_points`,
+`make_plane3_from_u_direction`, and `make_nurbs_spline3`. Every function returns
+a uniquely owning smart pointer. The two spline factories provide both
+`std::vector` and `std::valarray` collection overloads, including forms that
+accept `closed` after `degree`.
 
 Reusable routines in `utility.hpp` include `approximately_equal`, `square`,
 scaled-pivot `solve_linear_system`, `bisect_root`, `golden_section_minimize`,
@@ -641,7 +691,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.1.1+v0.1.1`; its commit hash is `unavailable` because a file cannot embed
+`0.1.2+v0.1.2`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated

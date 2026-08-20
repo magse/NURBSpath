@@ -76,7 +76,7 @@ public:
         if (radial.length() <= tolerance) {
             throw std::domain_error("circle parameter is undefined at its center");
         }
-        REAL u = std::atan2(radial.y(), radial.x());
+        REAL u = std::atan2(radial.y, radial.x);
         if (u < REAL(0)) {
             u += REAL(2) * std::numbers::pi_v<REAL>;
         }
