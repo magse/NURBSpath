@@ -1,6 +1,6 @@
 # Building and installing nurbspath
 
-`nurbspath` 0.1.3 is a dependency-free, header-only C++20 library. CMake builds
+`nurbspath` 0.1.4 is a dependency-free, header-only C++20 library. CMake builds
 the examples and tests, generates repository-aware version metadata, installs
 the headers, and exports a package target for consumers.
 
@@ -143,7 +143,7 @@ After installation, use the exported target from another CMake project:
 cmake_minimum_required(VERSION 3.20)
 project(my_geometry_app LANGUAGES CXX)
 
-find_package(nurbspath 0.1.3 CONFIG REQUIRED)
+find_package(nurbspath 0.1.4 CONFIG REQUIRED)
 
 add_executable(my_geometry_app main.cpp)
 target_link_libraries(my_geometry_app PRIVATE nurbspath::nurbspath)

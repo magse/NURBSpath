@@ -2,6 +2,7 @@
 
 #include "nurbspath/config.hpp"
 #include "nurbspath/point3.hpp"
+#include "nurbspath/serialization.hpp"
 #include "nurbspath/utility.hpp"
 
 #include <algorithm>
@@ -9,8 +10,13 @@
 #include <cmath>
 #include <concepts>
 #include <cstddef>
+#include <istream>
 #include <limits>
+#include <memory>
+#include <optional>
+#include <ostream>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -110,6 +116,59 @@ public:
 
     /** @brief Report whether the spline has a closed seam. @return True for closed curves. */
     [[nodiscard]] bool is_closed() const noexcept { return closed_; }
+
+    /**
+     * @brief Write one version-1 tagged `spline3` text record.
+     *
+     * The single row stores the decimal tag, `spline3` and `v1` tokens,
+     * degree, closure flag, tolerance, counts, interleaved control-point and
+     * weight data, and the knot vector. Floating fields use classic-locale,
+     * round-trip scientific notation. The row ends with one newline and does
+     * not change caller formatting or locale. No explicit flush is requested;
+     * normal stream policy applies. The complete grammar is documented in
+     * `DATA.md`.
+     *
+     * @param tag Application-defined record tag; repeated tags are allowed.
+     * @param output Destination text stream.
+     * @return Reference to output after attempting to write one
+     * newline-terminated row.
+     * @throws std::bad_alloc When buffering the encoded row fails.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    std::ostream& tag_write(std::size_t tag, std::ostream& output) const {
+        return detail::write_tagged_text_record<REAL>(
+            output, tag, "spline3", [this](std::ostream& row) {
+                row << ' ' << degree_ << ' ' << (closed_ ? 1 : 0) << ' '
+                    << tolerance_ << ' ' << control_points_.size() << ' '
+                    << knots_.size();
+                for (std::size_t index = 0; index < control_points_.size();
+                     ++index) {
+                    const point3<REAL>& point = control_points_[index];
+                    row << ' ' << point.x << ' ' << point.y << ' ' << point.z
+                        << ' ' << weights_[index];
+                }
+                for (const REAL knot : knots_) {
+                    row << ' ' << knot;
+                }
+            });
+    }
+
+    /**
+     * @brief Read and allocate one version-1 tagged `spline3` text record.
+     *
+     * When a row is present, exactly that physical row is consumed. Its type
+     * token must be `spline3`, and its complete definition is validated by the
+     * spline constructor. Malformed data and type mismatches consume the row
+     * and set `failbit`.
+     *
+     * @param input Source text stream positioned at the start of a row.
+     * @return Tag and non-null shared spline after success, or `std::nullopt`
+     * at EOF, another read failure, or after a malformed row.
+     * @throws std::bad_alloc When buffering or allocating the spline definition fails.
+     * @throws std::ios_base::failure When enabled by the stream exception mask.
+     */
+    [[nodiscard]] static std::optional<tagged_read_result<nurbs_spline3>>
+    tag_read(std::istream& input);
 
     /**
      * @brief Get the cached point at the start of the active domain.
@@ -640,5 +699,116 @@ private:
     point3<REAL> start_{};
     point3<REAL> end_{};
 };
+
+namespace detail {
+
+/** @cond */
+
+template <std::floating_point REAL>
+[[nodiscard]] inline std::optional<
+    tagged_read_result<nurbs_spline3<REAL>>>
+decode_tagged_spline3(
+    const tagged_text_record& record,
+    std::istream& source) {
+    if (record.entity_type != "spline3") {
+        mark_tagged_read_failure(source);
+        return std::nullopt;
+    }
+
+    auto payload = tagged_payload_input(record.payload);
+    std::string degree_token;
+    std::string closed_token;
+    std::string tolerance_token;
+    std::string control_count_token;
+    std::string knot_count_token;
+    if (!(payload >> degree_token >> closed_token >> tolerance_token >>
+          control_count_token >> knot_count_token)) {
+        mark_tagged_read_failure(source);
+        return std::nullopt;
+    }
+
+    std::size_t degree = 0;
+    std::size_t control_count = 0;
+    std::size_t knot_count = 0;
+    REAL tolerance = REAL(0);
+    if (!parse_size_token(degree_token, degree) ||
+        !parse_size_token(control_count_token, control_count) ||
+        !parse_size_token(knot_count_token, knot_count) ||
+        !parse_real_token(tolerance_token, tolerance) ||
+        (closed_token != "0" && closed_token != "1") ||
+        !(tolerance > REAL(0)) ||
+        control_count > record.payload.size() ||
+        knot_count > record.payload.size() ||
+        degree == std::numeric_limits<std::size_t>::max() ||
+        control_count >
+            std::numeric_limits<std::size_t>::max() - degree - 1 ||
+        knot_count != control_count + degree + 1) {
+        mark_tagged_read_failure(source);
+        return std::nullopt;
+    }
+
+    std::vector<point3<REAL>> control_points;
+    std::vector<REAL> weights;
+    std::vector<REAL> knots;
+
+    for (std::size_t index = 0; index < control_count; ++index) {
+        point3<REAL> point;
+        REAL weight = REAL(0);
+        if (!read_real_token(payload, point.x) ||
+            !read_real_token(payload, point.y) ||
+            !read_real_token(payload, point.z) ||
+            !read_real_token(payload, weight)) {
+            mark_tagged_read_failure(source);
+            return std::nullopt;
+        }
+        control_points.push_back(point);
+        weights.push_back(weight);
+    }
+
+    for (std::size_t index = 0; index < knot_count; ++index) {
+        REAL knot = REAL(0);
+        if (!read_real_token(payload, knot)) {
+            mark_tagged_read_failure(source);
+            return std::nullopt;
+        }
+        knots.push_back(knot);
+    }
+
+    if (!tagged_payload_exhausted(payload)) {
+        mark_tagged_read_failure(source);
+        return std::nullopt;
+    }
+
+    try {
+        return tagged_read_result<nurbs_spline3<REAL>>{
+            record.tag,
+            std::make_shared<nurbs_spline3<REAL>>(
+                std::move(control_points),
+                std::move(weights),
+                std::move(knots),
+                degree,
+                closed_token == "1",
+                tolerance)};
+    } catch (const std::invalid_argument&) {
+        mark_tagged_read_failure(source);
+    } catch (const std::domain_error&) {
+        mark_tagged_read_failure(source);
+    }
+    return std::nullopt;
+}
+
+/** @endcond */
+
+} // namespace detail
+
+template <std::floating_point REAL>
+std::optional<tagged_read_result<nurbs_spline3<REAL>>>
+nurbs_spline3<REAL>::tag_read(std::istream& input) {
+    const auto record = detail::read_tagged_text_record(input);
+    if (!record) {
+        return std::nullopt;
+    }
+    return detail::decode_tagged_spline3<REAL>(*record, input);
+}
 
 } // namespace nurbspath

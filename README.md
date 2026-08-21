@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.1.3 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.1.4 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -22,6 +22,8 @@ floating-point parameter is named `REAL`, so the same API works with `float`,
 
 See [INSTALL.md](INSTALL.md) for requirements, build and test commands,
 installation, and CMake package consumption.
+See [DATA.md](DATA.md) for the versioned, tagged 3D text format and its typed
+and heterogeneous reading APIs.
 
 ## Features
 
@@ -49,6 +51,8 @@ installation, and CMake package consumption.
 - Strictly 2D point-to-circle and point-to-spline distances.
 - Self-contained SVG diagnostics with orthographic and perspective cameras,
   projected geometry markers, and configurable curve tessellation.
+- Versioned, single-row tagged text persistence for 3D points, vectors,
+  spheres, and NURBS splines, including type-safe heterogeneous input.
 - No third-party runtime or build dependency.
 
 ## Coordinate and parameter conventions
@@ -597,6 +601,36 @@ portable between different scalar types, floating-point representations, or
 byte orders. Text and binary reads leave the existing object unchanged unless
 the complete record is available.
 
+### Tagged 3D persistence
+
+`point3`, `vector3`, `sphere3`, and `nurbs_spline3` each provide
+`tag_write(tag, output)` and a static `tag_read(input)`. Every call writes one
+versioned text row whose floating-point fields use round-trip scientific
+notation:
+
+```text
+42 point3 v1 1.0000000000000000e+00 2.0000000000000000e+00 3.0000000000000000e+00
+42 sphere3 v1 0.0000000000000000e+00 0.0000000000000000e+00 0.0000000000000000e+00 2.5000000000000000e+00
+```
+
+Tags are application data rather than unique keys. Multiple entity rows may
+therefore use the same tag, for example to record every entity at one time
+step. A typed read returns `std::optional<tagged_read_result<ENTITY>>`, which
+contains the tag and a shared pointer to the allocated entity:
+
+```cpp
+nurbspath::point3<double>{1.0, 2.0, 3.0}.tag_write(42, output);
+auto point_record = nurbspath::point3<double>::tag_read(input);
+```
+
+The general `nurbspath::tag_read<REAL>(input)` routine returns
+`std::optional<tagged_entity3<REAL>>`. Its `entity` member is a type-safe
+variant of shared pointers to the four supported concrete types. The on-disk
+token for `nurbs_spline3` is the shorter stable name `spline3`. Unknown,
+malformed, invalid, or surplus fields set `failbit`, and one complete physical
+row is consumed per call. See [DATA.md](DATA.md) for the exact `v1` grammar,
+spline field order, failure behavior, and portability rules.
+
 `nurbs_spline2<REAL>` exposes the same rational definition, native domain,
 analytic derivatives, tangent, arc-length approximation, global
 `interpolate`, and `adopt_to_points` operations as the 3D spline, with all
@@ -692,7 +726,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.1.3+v0.1.3`; its commit hash is `unavailable` because a file cannot embed
+`0.1.4+v0.1.4`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated
@@ -717,6 +751,8 @@ fallback, where that macro is zero.
 | `nurbspath/ray3.hpp` | Forward parametric ray |
 | `nurbspath/nurbs_spline3.hpp` | Rational spline, derivatives, interpolation |
 | `nurbspath/sphere3.hpp` | Parameterized sphere |
+| `nurbspath/serialization.hpp` | Coordinate and tagged-record I/O support |
+| `nurbspath/tagged_serialization.hpp` | Type-safe general tagged 3D reader |
 | `nurbspath/plane3.hpp` | Parameterized infinite plane |
 | `nurbspath/projection.hpp` | Explicit plane-based 2D-to-3D entity projection |
 | `nurbspath/creators.hpp` | `std::shared_ptr` factories for all geometry entities |

@@ -161,7 +161,7 @@ self-contained and dependency-free.
 
 - `CMakeLists.txt`: build, test, documentation, install, and package export
 - `include/nurbspath/`: public header-only implementation
-- `tests/01_test_*.cpp` through `tests/17_test_*.cpp`: focused numbered tests
+- `tests/01_test_*.cpp` through `tests/18_test_*.cpp`: focused numbered tests
 - `tests/test_support.hpp`: shared dependency-free test helpers
 - `examples/basic_usage.cpp`: minimal runnable 3D integration example
 - `examples/basic_usage_2d.cpp`: minimal runnable native 2D example
@@ -169,6 +169,7 @@ self-contained and dependency-free.
 - `cmake/config.hpp.in`: CMake-refreshed version/Git metadata header
 - `cmake/nurbspath-config.cmake.in`: installed package configuration
 - `README.md`: API, coordinate, and numerical behavior
+- `DATA.md`: versioned tagged-text storage format for 3D entities
 - `INSTALL.md`: build, install, and consumption instructions
 - `.gitignore`: generated build, release, cache, and platform metadata rules
 

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(
     nurbspath
-    VERSION 0.1.3
+    VERSION 0.1.4
     DESCRIPTION "Header-only C++20 geometry and numerical queries for 2D and 3D NURBS paths"
     LANGUAGES CXX
 )
@@ -116,6 +116,7 @@ if(NURBSPATH_BUILD_TESTS)
         tests/15_test_svg_canvas2.cpp
         tests/16_test_config.cpp
         tests/17_test_manual.cpp
+        tests/18_test_tagged_io.cpp
     )
     set(NURBSPATH_TEST_TARGETS)
     foreach(test_source IN LISTS NURBSPATH_TEST_SOURCES)
@@ -152,6 +153,7 @@ if(NURBSPATH_BUILD_DOCUMENTATION)
         "${CMAKE_CURRENT_SOURCE_DIR}/include/nurbspath"
         "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
         "${CMAKE_CURRENT_SOURCE_DIR}/INSTALL.md"
+        "${CMAKE_CURRENT_SOURCE_DIR}/DATA.md"
         COMMENT "Generate nurbspath API documentation"
     )
     add_custom_target(docs DEPENDS nurbspath_docs)

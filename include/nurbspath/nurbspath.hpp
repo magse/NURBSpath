@@ -22,6 +22,7 @@ namespace nurbspath {}
 #include "nurbspath/ray3.hpp"
 #include "nurbspath/serialization.hpp"
 #include "nurbspath/sphere3.hpp"
+#include "nurbspath/tagged_serialization.hpp"
 #include "nurbspath/utility.hpp"
 #include "nurbspath/vector2.hpp"
 #include "nurbspath/vector3.hpp"

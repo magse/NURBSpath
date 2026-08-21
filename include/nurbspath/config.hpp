@@ -4,7 +4,7 @@
  * @file config.hpp
  * @brief Local nurbspath version and Git metadata.
  *
- * This source-tree header is the no-CMake fallback for release `v0.1.3`.
+ * This source-tree header is the no-CMake fallback for release `v0.1.4`.
  * CMake generates a header with refreshed commit and worktree values on every
  * configure and installs that generated copy. The guarded Git-state macros
  * may be overridden before inclusion.
@@ -17,13 +17,13 @@
 #define NURBSPATH_VERSION_MINOR 1
 
 /** @brief Library semantic-version patch component. */
-#define NURBSPATH_VERSION_PATCH 3
+#define NURBSPATH_VERSION_PATCH 4
 
 /** @brief Complete library semantic-version string. */
-#define NURBSPATH_VERSION_STRING "0.1.3"
+#define NURBSPATH_VERSION_STRING "0.1.4"
 
 /** @brief Integer library version encoded as `major*10000 + minor*100 + patch`. */
-#define NURBSPATH_VERSION_NUMBER 103
+#define NURBSPATH_VERSION_NUMBER 104
 
 #ifndef NURBSPATH_GIT_COMMIT
 /** @brief Full Git commit hash, unavailable in the checked-in fallback. */
@@ -37,7 +37,7 @@
 
 #ifndef NURBSPATH_GIT_DESCRIBE
 /** @brief Git tag/hash description including the dirty-worktree suffix. */
-#define NURBSPATH_GIT_DESCRIBE "v0.1.3"
+#define NURBSPATH_GIT_DESCRIBE "v0.1.4"
 #endif
 
 #ifndef NURBSPATH_GIT_DIRTY
@@ -52,7 +52,7 @@
 
 #ifndef NURBSPATH_GIT_VERSION
 /** @brief Library version combined with the current Git description. */
-#define NURBSPATH_GIT_VERSION "0.1.3+v0.1.3"
+#define NURBSPATH_GIT_VERSION "0.1.4+v0.1.4"
 #endif
 
 #ifndef NURBSPATH_CONFIG_GENERATED
