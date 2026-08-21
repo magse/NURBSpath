@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.1.2 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.1.3 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -81,8 +81,8 @@ Include the complete public API with:
 ```
 
 Every geometry entity also has an initialization-matching allocation helper in
-`creators.hpp`. These helpers return `std::unique_ptr`, making ownership
-explicit without reference-counting overhead:
+`creators.hpp`. These helpers return `std::shared_ptr`, making ownership
+explicit and allowing multiple callers to share the entity lifetime:
 
 ```cpp
 auto point = nurbspath::make_point2<>(1.0, -0.5);
@@ -654,7 +654,8 @@ only.
 `make_point3`, `make_ray3`, `make_ray3_from_points`, `make_sphere3`, all three
 `make_plane3` constructor forms, `make_plane3_from_points`,
 `make_plane3_from_u_direction`, and `make_nurbs_spline3`. Every function returns
-a uniquely owning smart pointer. The two spline factories provide both
+a shared-ownership smart pointer. Copying a result keeps the same entity alive
+until the final owner releases it. The two spline factories provide both
 `std::vector` and `std::valarray` collection overloads, including forms that
 accept `closed` after `degree`.
 
@@ -691,7 +692,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.1.2+v0.1.2`; its commit hash is `unavailable` because a file cannot embed
+`0.1.3+v0.1.3`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated
@@ -718,7 +719,7 @@ fallback, where that macro is zero.
 | `nurbspath/sphere3.hpp` | Parameterized sphere |
 | `nurbspath/plane3.hpp` | Parameterized infinite plane |
 | `nurbspath/projection.hpp` | Explicit plane-based 2D-to-3D entity projection |
-| `nurbspath/creators.hpp` | `std::unique_ptr` factories for all geometry entities |
+| `nurbspath/creators.hpp` | `std::shared_ptr` factories for all geometry entities |
 | `nurbspath/graphics.hpp` | Flat 2D and 3D SVG diagnostics |
 | `nurbspath/manual.hpp` | Extension point under `nurbspath::manual` |
 | `nurbspath/utility.hpp` | Settings, root/minimum finders, linear solver |

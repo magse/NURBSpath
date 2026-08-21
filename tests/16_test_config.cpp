@@ -11,11 +11,11 @@ int main() {
 
     static_assert(NURBSPATH_VERSION_MAJOR == 0);
     static_assert(NURBSPATH_VERSION_MINOR == 1);
-    static_assert(NURBSPATH_VERSION_PATCH == 2);
-    static_assert(NURBSPATH_VERSION_NUMBER == 102);
+    static_assert(NURBSPATH_VERSION_PATCH == 3);
+    static_assert(NURBSPATH_VERSION_NUMBER == 103);
     static_assert(NURBSPATH_CONFIG_GENERATED == 1);
 
-    check(NURBSPATH_VERSION_STRING == "0.1.2"sv,
+    check(NURBSPATH_VERSION_STRING == "0.1.3"sv,
           "semantic version string matches CMake project version");
     check(NURBSPATH_GIT_COMMIT[0] != '\0', "Git commit identity is not empty");
     check(NURBSPATH_GIT_COMMIT_SHORT[0] != '\0',

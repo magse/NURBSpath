@@ -54,19 +54,24 @@ int main() {
         true);
 
     static_assert(std::is_same_v<
-        decltype(vector_2d), std::unique_ptr<vector2<real>>>);
+        decltype(vector_2d), std::shared_ptr<vector2<real>>>);
     static_assert(std::is_same_v<
-        decltype(point_2d), std::unique_ptr<point2<real>>>);
+        decltype(point_2d), std::shared_ptr<point2<real>>>);
     static_assert(std::is_same_v<
-        decltype(ray_2d), std::unique_ptr<ray2<real>>>);
+        decltype(ray_2d), std::shared_ptr<ray2<real>>>);
     static_assert(std::is_same_v<
-        decltype(ray_2d_from_points), std::unique_ptr<ray2<real>>>);
+        decltype(ray_2d_from_points), std::shared_ptr<ray2<real>>>);
     static_assert(std::is_same_v<
-        decltype(circle_2d), std::unique_ptr<circle2<real>>>);
+        decltype(circle_2d), std::shared_ptr<circle2<real>>>);
     static_assert(std::is_same_v<
-        decltype(spline_2d), std::unique_ptr<nurbs_spline2<real>>>);
+        decltype(spline_2d), std::shared_ptr<nurbs_spline2<real>>>);
     static_assert(std::is_same_v<
-        decltype(valarray_spline_2d), std::unique_ptr<nurbs_spline2<real>>>);
+        decltype(closed_spline_2d), std::shared_ptr<nurbs_spline2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(valarray_spline_2d), std::shared_ptr<nurbs_spline2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(closed_valarray_spline_2d),
+        std::shared_ptr<nurbs_spline2<real>>>);
     check(vector_2d->x == 3.0 && vector_2d->y == 4.0,
           "make_vector2 public components");
     check_near(vector_2d->length(), 5.0, 1e-12, "make_vector2 value");
@@ -156,25 +161,34 @@ int main() {
         true);
 
     static_assert(std::is_same_v<
-        decltype(vector_3d), std::unique_ptr<vector3<real>>>);
+        decltype(vector_3d), std::shared_ptr<vector3<real>>>);
     static_assert(std::is_same_v<
-        decltype(point_3d), std::unique_ptr<point3<real>>>);
+        decltype(point_3d), std::shared_ptr<point3<real>>>);
     static_assert(std::is_same_v<
-        decltype(ray_3d), std::unique_ptr<ray3<real>>>);
+        decltype(ray_3d), std::shared_ptr<ray3<real>>>);
     static_assert(std::is_same_v<
-        decltype(ray_3d_from_points), std::unique_ptr<ray3<real>>>);
+        decltype(ray_3d_from_points), std::shared_ptr<ray3<real>>>);
     static_assert(std::is_same_v<
-        decltype(sphere_3d), std::unique_ptr<sphere3<real>>>);
+        decltype(sphere_3d), std::shared_ptr<sphere3<real>>>);
     static_assert(std::is_same_v<
-        decltype(hessian_plane), std::unique_ptr<plane3<real>>>);
+        decltype(hessian_plane), std::shared_ptr<plane3<real>>>);
     static_assert(std::is_same_v<
-        decltype(three_point_plane), std::unique_ptr<plane3<real>>>);
+        decltype(origin_plane), std::shared_ptr<plane3<real>>>);
     static_assert(std::is_same_v<
-        decltype(u_direction_plane), std::unique_ptr<plane3<real>>>);
+        decltype(oriented_plane), std::shared_ptr<plane3<real>>>);
     static_assert(std::is_same_v<
-        decltype(spline_3d), std::unique_ptr<nurbs_spline3<real>>>);
+        decltype(three_point_plane), std::shared_ptr<plane3<real>>>);
     static_assert(std::is_same_v<
-        decltype(valarray_spline_3d), std::unique_ptr<nurbs_spline3<real>>>);
+        decltype(u_direction_plane), std::shared_ptr<plane3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(spline_3d), std::shared_ptr<nurbs_spline3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(closed_spline_3d), std::shared_ptr<nurbs_spline3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(valarray_spline_3d), std::shared_ptr<nurbs_spline3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(closed_valarray_spline_3d),
+        std::shared_ptr<nurbs_spline3<real>>>);
     check(vector_3d->x == 1.0 && vector_3d->y == 2.0 && vector_3d->z == 2.0,
           "make_vector3 public components");
     check_near(vector_3d->length(), 3.0, 1e-12, "make_vector3 value");
@@ -237,9 +251,26 @@ int main() {
     auto zero_point_2d = nurbspath::make_point2<real>();
     auto zero_vector_3d = nurbspath::make_vector3<real>();
     auto zero_point_3d = nurbspath::make_point3<real>();
+    static_assert(std::is_same_v<
+        decltype(zero_vector_2d), std::shared_ptr<vector2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(zero_point_2d), std::shared_ptr<point2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(zero_vector_3d), std::shared_ptr<vector3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(zero_point_3d), std::shared_ptr<point3<real>>>);
     check(zero_vector_2d->is_near_zero() && *zero_point_2d == point2<real>::origin() &&
               zero_vector_3d->is_near_zero() && *zero_point_3d == point3<real>::origin(),
           "zero-value creator overloads");
+
+    auto shared_point_2d = point_2d;
+    check(shared_point_2d.get() == point_2d.get() && point_2d.use_count() == 2,
+          "copying a creator result shares the same entity");
+    point_2d.reset();
+    check(shared_point_2d.use_count() == 1,
+          "the remaining shared owner keeps the creator result alive");
+    check_point2(*shared_point_2d, {1.0, -2.0}, 1e-12,
+                 "shared creator result remains usable after one owner resets");
 
     bool forwarded_validation = false;
     try {

@@ -43,7 +43,7 @@ SVGs into the repository root.
 - Keep implementation-only free helpers and support types in
   `nurbspath::detail`; private class members may remain private implementation.
 - Keep geometry allocation helpers in `include/nurbspath/creators.hpp`. They
-  mirror entity constructors and return `std::unique_ptr`, preserving the
+  mirror entity constructors and return `std::shared_ptr`, preserving the
   constructor's validation and exceptions. Keep the NURBS factory overloads
   available for both `std::vector` and `std::valarray` definitions.
 - Prefer `[[nodiscard]]`, `const`, `constexpr`, and `noexcept` where their
