@@ -23,7 +23,7 @@ void write_scene(
     const std::string& file_name,
     const nurbspath::nurbs_spline3<real>& path,
     const nurbspath::nurbs_spline2<real>& path2) {
-    nurbspath::svg_graphics_options<real> options;
+    nurbspath::svg_graphics_options3<real> options;
     options.line_width = 1.5;
     options.spline_segment_count = 160;
     options.sphere_segment_count = 120;

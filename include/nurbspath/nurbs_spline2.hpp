@@ -33,6 +33,10 @@ struct spline_derivatives2 {
  * The native parameter is `s`. Position and analytic rational derivatives are
  * evaluated entirely in two dimensions. Use `project(plane, spline)` to create
  * a separate 3D spline by projecting only this curve's control points.
+ * Checked definition setters retain the degree, validate a complete candidate
+ * before committing it, and refresh cached endpoint state. A failed setter
+ * leaves the spline unchanged. A successful setter invalidates references,
+ * pointers, and iterators previously obtained from definition getters.
  *
  * @tparam REAL Floating-point scalar type.
  */
@@ -85,15 +89,7 @@ public:
           degree_(degree),
           tolerance_(tolerance),
           closed_(closed) {
-        validate_definition();
-        const spline_derivatives2<REAL> start_values = derivatives_at(s_min());
-        const spline_derivatives2<REAL> end_values = derivatives_at(s_max());
-        start_ = start_values.point;
-        end_ = end_values.point;
-        if (closed_ && distance(start_, end_) > closure_tolerance()) {
-            throw std::invalid_argument(
-                "closed 2D NURBS endpoints must coincide");
-        }
+        validate_and_refresh();
     }
 
     /** @brief Get all 2D control points. @return Constant control-point vector reference. */
@@ -115,6 +111,169 @@ public:
 
     /** @brief Report whether the spline has a closed seam. @return True for closed curves. */
     [[nodiscard]] bool is_closed() const noexcept { return closed_; }
+
+    /**
+     * @brief Get one control point by index.
+     * @param index Zero-based control-point index.
+     * @return Constant reference to the selected control point.
+     * @throws std::out_of_range When index is outside the control-point vector.
+     */
+    [[nodiscard]] const point2<REAL>& control_point(std::size_t index) const {
+        return control_points_.at(index);
+    }
+
+    /**
+     * @brief Get one rational weight by index.
+     * @param index Zero-based weight index.
+     * @return Selected rational weight.
+     * @throws std::out_of_range When index is outside the weight vector.
+     */
+    [[nodiscard]] REAL weight(std::size_t index) const {
+        return weights_.at(index);
+    }
+
+    /**
+     * @brief Get one knot by index.
+     * @param index Zero-based knot index.
+     * @return Selected knot value.
+     * @throws std::out_of_range When index is outside the knot vector.
+     */
+    [[nodiscard]] REAL knot(std::size_t index) const {
+        return knots_.at(index);
+    }
+
+    /**
+     * @brief Replace one control point through a checked atomic update.
+     * @param index Zero-based control-point index.
+     * @param point New finite 2D control point.
+     * @throws std::out_of_range When index is outside the control-point vector.
+     * @throws std::invalid_argument When the resulting definition or seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_control_point(std::size_t index, const point2<REAL>& point) {
+        std::vector<point2<REAL>> updated = control_points_;
+        updated.at(index) = point;
+        set_control_points(std::move(updated));
+    }
+
+    /**
+     * @brief Replace one rational weight through a checked atomic update.
+     * @param index Zero-based weight index.
+     * @param weight New finite positive weight.
+     * @throws std::out_of_range When index is outside the weight vector.
+     * @throws std::invalid_argument When the resulting definition or seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_weight(std::size_t index, REAL weight) {
+        std::vector<REAL> updated = weights_;
+        updated.at(index) = weight;
+        set_weights(std::move(updated));
+    }
+
+    /**
+     * @brief Replace one knot through a checked atomic update.
+     * @param index Zero-based knot index.
+     * @param knot New finite knot value.
+     * @throws std::out_of_range When index is outside the knot vector.
+     * @throws std::invalid_argument When knot order, domain, or seam becomes invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_knot(std::size_t index, REAL knot) {
+        std::vector<REAL> updated = knots_;
+        updated.at(index) = knot;
+        set_knots(std::move(updated));
+    }
+
+    /**
+     * @brief Replace the complete control-point vector while retaining other fields.
+     *
+     * The new count must remain compatible with the current weights, knots,
+     * and degree. Use `set_definition` to change related counts together.
+     *
+     * @param control_points New finite 2D control points.
+     * @throws std::invalid_argument When the resulting definition or seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_control_points(std::vector<point2<REAL>> control_points) {
+        commit_definition(
+            std::move(control_points), weights_, knots_, closed_, tolerance_);
+    }
+
+    /**
+     * @brief Replace the complete weight vector while retaining other fields.
+     * @param weights New finite positive weight for every control point.
+     * @throws std::invalid_argument When the resulting definition or seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_weights(std::vector<REAL> weights) {
+        commit_definition(
+            control_points_, std::move(weights), knots_, closed_, tolerance_);
+    }
+
+    /**
+     * @brief Replace the complete knot vector while retaining other fields.
+     *
+     * The native active domain may change. Supplying the whole vector allows
+     * affine rescaling without invalid intermediate knot orderings.
+     *
+     * @param knots New finite nondecreasing knot vector.
+     * @throws std::invalid_argument When the resulting definition or seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_knots(std::vector<REAL> knots) {
+        commit_definition(
+            control_points_, weights_, std::move(knots), closed_, tolerance_);
+    }
+
+    /**
+     * @brief Change the validation and parameter-boundary tolerance atomically.
+     * @param tolerance New finite positive tolerance.
+     * @throws std::invalid_argument When tolerance or the resulting seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_tolerance(REAL tolerance) {
+        commit_definition(
+            control_points_, weights_, knots_, closed_, tolerance);
+    }
+
+    /**
+     * @brief Change the closed-seam requirement atomically.
+     * @param closed True to require coincident active-domain endpoints.
+     * @throws std::invalid_argument When enabling closure on an open seam.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_closed(bool closed) {
+        commit_definition(
+            control_points_, weights_, knots_, closed, tolerance_);
+    }
+
+    /**
+     * @brief Atomically replace every definition field except the degree.
+     *
+     * The current degree is retained. The complete candidate is validated and
+     * cached endpoints are refreshed before it replaces this spline.
+     *
+     * @param control_points New finite 2D control points.
+     * @param weights New finite positive weight for every control point.
+     * @param knots New finite nondecreasing knot vector.
+     * @param closed True to require coincident active-domain endpoints.
+     * @param tolerance New finite positive tolerance.
+     * @throws std::invalid_argument When the resulting definition or seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_definition(
+        std::vector<point2<REAL>> control_points,
+        std::vector<REAL> weights,
+        std::vector<REAL> knots,
+        bool closed,
+        REAL tolerance) {
+        commit_definition(
+            std::move(control_points),
+            std::move(weights),
+            std::move(knots),
+            closed,
+            tolerance);
+    }
 
     /**
      * @brief Get the cached point at the start of the active domain.
@@ -408,6 +567,34 @@ public:
     }
 
 private:
+    void validate_and_refresh() {
+        validate_definition();
+        const spline_derivatives2<REAL> start_values = derivatives_at(s_min());
+        const spline_derivatives2<REAL> end_values = derivatives_at(s_max());
+        start_ = start_values.point;
+        end_ = end_values.point;
+        if (closed_ && distance(start_, end_) > closure_tolerance()) {
+            throw std::invalid_argument(
+                "closed 2D NURBS endpoints must coincide");
+        }
+    }
+
+    void commit_definition(
+        std::vector<point2<REAL>> control_points,
+        std::vector<REAL> weights,
+        std::vector<REAL> knots,
+        bool closed,
+        REAL tolerance) {
+        nurbs_spline2 replacement(
+            std::move(control_points),
+            std::move(weights),
+            std::move(knots),
+            degree_,
+            closed,
+            tolerance);
+        *this = std::move(replacement);
+    }
+
     void validate_definition() const {
         if (!(tolerance_ > REAL(0)) || !std::isfinite(tolerance_)) {
             throw std::invalid_argument("2D NURBS tolerance must be finite and positive");

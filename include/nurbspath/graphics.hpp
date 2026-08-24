@@ -128,8 +128,8 @@ struct svg_graphics_options2 {
     }
 };
 
-/** @brief Camera projections supported by the SVG diagnostic renderer. */
-enum class svg_projection {
+/** @brief Camera projections supported by the three-dimensional SVG renderer. */
+enum class svg_projection3 {
     orthographic, ///< Parallel projection with world-space viewport extents.
     perspective ///< Pinhole projection with vertical field angle.
 };
@@ -166,7 +166,7 @@ public:
         return svg_view3(
             eyepoint,
             lookatpoint,
-            svg_projection::orthographic,
+            svg_projection3::orthographic,
             viewport_width,
             viewport_height,
             REAL(0),
@@ -196,7 +196,7 @@ public:
         return svg_view3(
             eyepoint,
             lookatpoint,
-            svg_projection::perspective,
+            svg_projection3::perspective,
             REAL(0),
             REAL(0),
             vertical_view_angle,
@@ -210,7 +210,7 @@ public:
     /** @brief Get center-of-view target. @return Constant look-at reference. */
     [[nodiscard]] const point3<REAL>& lookatpoint() const noexcept { return lookatpoint_; }
     /** @brief Get projection mode. @return Orthographic or perspective mode. */
-    [[nodiscard]] svg_projection projection() const noexcept { return projection_; }
+    [[nodiscard]] svg_projection3 projection() const noexcept { return projection_; }
     /** @brief Get orthographic world width. @return Width, or zero for perspective. */
     [[nodiscard]] REAL viewport_width() const noexcept { return viewport_width_; }
     /** @brief Get orthographic world height. @return Height, or zero for perspective. */
@@ -230,7 +230,7 @@ private:
     svg_view3(
         const point3<REAL>& eyepoint,
         const point3<REAL>& lookatpoint,
-        svg_projection projection,
+        svg_projection3 projection,
         REAL viewport_width,
         REAL viewport_height,
         REAL vertical_view_angle,
@@ -265,7 +265,7 @@ private:
             throw std::invalid_argument("SVG image dimensions must be positive");
         }
 
-        if (projection_ == svg_projection::orthographic) {
+        if (projection_ == svg_projection3::orthographic) {
             if (!(viewport_width_ > REAL(0)) ||
                 !(viewport_height_ > REAL(0)) ||
                 !std::isfinite(viewport_width_) ||
@@ -289,7 +289,7 @@ private:
 
     point3<REAL> eyepoint_;
     point3<REAL> lookatpoint_;
-    svg_projection projection_;
+    svg_projection3 projection_;
     REAL viewport_width_;
     REAL viewport_height_;
     REAL vertical_view_angle_;
@@ -299,11 +299,11 @@ private:
 };
 
 /**
- * @brief Styling and tessellation controls for SVG diagnostics.
+ * @brief Styling and tessellation controls for three-dimensional SVG diagnostics.
  * @tparam REAL Floating-point scalar type.
  */
 template <std::floating_point REAL>
-struct svg_graphics_options {
+struct svg_graphics_options3 {
     /// SVG line width in viewBox units, normally equivalent to output pixels.
     REAL line_width = REAL(1.5);
 
@@ -806,7 +806,7 @@ public:
      */
     explicit svg_document3(
         const svg_view3<REAL>& view,
-        const svg_graphics_options<REAL>& options = {})
+        const svg_graphics_options3<REAL>& options = {})
         : view_(view), options_(options), frame_(make_camera_frame(view)) {
         options_.validate();
         elements_.imbue(std::locale::classic());
@@ -1169,7 +1169,7 @@ private:
         const REAL image_width = static_cast<REAL>(view_.image_width());
         const REAL image_height = static_cast<REAL>(view_.image_height());
 
-        if (view_.projection() == svg_projection::orthographic) {
+        if (view_.projection() == svg_projection3::orthographic) {
             // Use one scale for both axes so circles remain circles even when
             // viewport and image aspect ratios differ.  Both requested world
             // extents remain visible; the looser axis is simply letterboxed.
@@ -1209,7 +1209,7 @@ private:
         camera_point camera_first = world_to_camera(first);
         camera_point camera_second = world_to_camera(second);
 
-        if (view_.projection() == svg_projection::perspective) {
+        if (view_.projection() == svg_projection3::perspective) {
             const REAL near_distance = view_.near_distance();
             if (camera_first.z < near_distance && camera_second.z < near_distance) {
                 return std::nullopt;
@@ -1251,7 +1251,7 @@ private:
             REAL(64) * std::numeric_limits<REAL>::epsilon() *
             std::max(direction_scale, REAL(1));
 
-        if (view_.projection() == svg_projection::orthographic) {
+        if (view_.projection() == svg_projection3::orthographic) {
             first = origin;
             second = {
                 origin.x + direction.x,
@@ -1534,7 +1534,7 @@ private:
         REAL circle_radius = sphere.radius();
         vector3<REAL> circle_normal = -frame_.forward;
 
-        if (view_.projection() == svg_projection::perspective) {
+        if (view_.projection() == svg_projection3::perspective) {
             const vector3<REAL> center_to_eye = view_.eyepoint() - sphere.center();
             const REAL eye_distance = center_to_eye.length();
             if (eye_distance > sphere.radius()) {
@@ -1592,7 +1592,7 @@ private:
             const point3<REAL> middle_point =
                 sphere.center() + sphere.radius() * middle_normal;
             const vector3<REAL> toward_camera =
-                view_.projection() == svg_projection::orthographic
+                view_.projection() == svg_projection3::orthographic
                     ? -frame_.forward
                     : view_.eyepoint() - middle_point;
             const bool visible = middle_normal.dot(toward_camera) >= REAL(0);
@@ -1608,7 +1608,7 @@ private:
     }
 
     svg_view3<REAL> view_;
-    svg_graphics_options<REAL> options_;
+    svg_graphics_options3<REAL> options_;
     camera_frame frame_;
     std::ostringstream elements_;
 };
@@ -1626,7 +1626,7 @@ template <std::floating_point REAL, typename ENTITY>
 [[nodiscard]] std::string to_svg(
     const svg_view3<REAL>& view,
     const ENTITY& entity,
-    const svg_graphics_options<REAL>& options = {}) {
+    const svg_graphics_options3<REAL>& options = {}) {
     svg_document3<REAL> document(view, options);
     document.add(entity);
     return document.svg();
@@ -1647,7 +1647,7 @@ template <std::floating_point REAL, typename ENTITY>
     const svg_view3<REAL>& view,
     const plane3<REAL>& plane,
     const ENTITY& entity,
-    const svg_graphics_options<REAL>& options = {}) {
+    const svg_graphics_options3<REAL>& options = {}) {
     svg_document3<REAL> document(view, options);
     document.add(plane, entity);
     return document.svg();

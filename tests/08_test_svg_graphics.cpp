@@ -36,8 +36,13 @@ int main() {
         eye, look_at, 8.0, 6.0, 800, 600);
     const auto perspective_view = nurbspath::svg_view3<real>::perspective(
         eye, look_at, std::numbers::pi_v<real> / 3.0, 800, 600, 0.01);
+    check(orthographic_view.projection() ==
+              nurbspath::svg_projection3::orthographic &&
+              perspective_view.projection() ==
+              nurbspath::svg_projection3::perspective,
+          "3D SVG views expose dimension-specific projection modes");
 
-    nurbspath::svg_graphics_options<real> options;
+    nurbspath::svg_graphics_options3<real> options;
     options.line_width = 2.0;
     options.spline_segment_count = 12;
     options.sphere_segment_count = 24;

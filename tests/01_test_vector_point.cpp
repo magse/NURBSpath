@@ -79,6 +79,73 @@ int main() {
               {-1.0, 0.0, 0.0}, 1e-12),
           "vector reflection");
 
+    static_assert(std::is_same_v<
+                  decltype(nurbspath::rotate(
+                      vector3<real>{}, real{}, point3<real>{})),
+                  point3<real>>);
+    const point3<real> rotation_point{2.0, -1.0, 3.0};
+    const point3<real> quarter_turn = nurbspath::rotate(
+        vector3<real>{0.0, 0.0, 10.0},
+        std::numbers::pi_v<real> / 2.0,
+        rotation_point);
+    check_point(quarter_turn, {1.0, 2.0, 3.0}, 1e-12,
+                "point rotation uses radians and the right-hand rule");
+    check_point(
+        nurbspath::rotate(
+            vector3<real>{0.0, 3.0, 4.0},
+            std::numbers::pi_v<real> / 2.0,
+            point3<real>{5.0, 5.0, 5.0}),
+        {-1.0, 8.2, 2.6},
+        1e-12,
+        "point rotation supports an arbitrary non-unit axis");
+    check_point(
+        nurbspath::rotate(
+            vector3<real>{0.0, 0.0, 10.0},
+            -std::numbers::pi_v<real> / 2.0,
+            rotation_point),
+        {-1.0, -2.0, 3.0},
+        1e-12,
+        "negative point rotation reverses the direction");
+    check_point(
+        nurbspath::rotate(
+            vector3<real>{0.0, 0.0, 1e-100},
+            std::numbers::pi_v<real> / 2.0,
+            rotation_point),
+        quarter_turn,
+        1e-12,
+        "point rotation is independent of nonzero axis magnitude");
+    const real maximum_axis_component = std::numeric_limits<real>::max();
+    check_point(
+        nurbspath::rotate(
+            vector3<real>{
+                maximum_axis_component,
+                maximum_axis_component,
+                maximum_axis_component},
+            2.0 * std::numbers::pi_v<real> / 3.0,
+            point3<real>{1.0, 2.0, 3.0}),
+        {3.0, 1.0, 2.0},
+        1e-12,
+        "point rotation normalizes an extreme finite axis without overflow");
+    check_near(quarter_turn.magnitude(), rotation_point.magnitude(), 1e-12,
+               "point rotation preserves distance from the world origin");
+    check_point(
+        nurbspath::rotate(
+            vector3<real>{1.0, 2.0, 3.0},
+            1.25,
+            point3<real>::origin()),
+        point3<real>::origin(),
+        1e-12,
+        "point rotation keeps the world origin fixed");
+    bool rejected_zero_rotation_axis = false;
+    try {
+        static_cast<void>(nurbspath::rotate(
+            vector3<real>::zero(), 1.0, rotation_point));
+    } catch (const std::domain_error&) {
+        rejected_zero_rotation_axis = true;
+    }
+    check(rejected_zero_rotation_axis,
+          "point rotation rejects a zero axis");
+
     std::ostringstream output;
     output << point3<real>{1.25, -2.5, 3.75} << '|'
            << vector3<real>{-4.0, 5.5, 6.0};

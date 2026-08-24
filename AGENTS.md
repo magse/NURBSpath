@@ -126,6 +126,14 @@ functions. First, second, and third rational derivatives use homogeneous
 numerator/weight derivatives and the quotient rule. Do not replace these
 analytic derivatives with finite differences.
 
+Keep spline definition storage private. Definition setters must retain the
+current degree, validate a complete candidate before committing it, and refresh
+cached endpoints and any other derived state. Failed updates leave the spline
+unchanged; use bulk setters for correlated changes such as closed seams or knot
+rescaling. Keep cached endpoints readable through member getters but derived
+and read-only; do not add direct endpoint setters. Target endpoint changes by
+editing the control-point definition.
+
 `interpolate` and `adopt_to_points` perform global interpolation through the
 provided samples. The supplied strictly increasing arc-length stations remain
 the native `s` values; do not silently normalize them. Unit weights make the
@@ -161,7 +169,7 @@ self-contained and dependency-free.
 
 - `CMakeLists.txt`: build, test, documentation, install, and package export
 - `include/nurbspath/`: public header-only implementation
-- `tests/01_test_*.cpp` through `tests/18_test_*.cpp`: focused numbered tests
+- `tests/01_test_*.cpp` through `tests/19_test_*.cpp`: focused numbered tests
 - `tests/test_support.hpp`: shared dependency-free test helpers
 - `examples/basic_usage.cpp`: minimal runnable 3D integration example
 - `examples/basic_usage_2d.cpp`: minimal runnable native 2D example

@@ -89,7 +89,7 @@ int main() {
 
     const auto view = nurbspath::svg_view3<real>::orthographic(
         {8.0, -10.0, 9.0}, plane.origin(), 10.0, 8.0, 800, 640);
-    nurbspath::svg_graphics_options<real> options;
+    nurbspath::svg_graphics_options3<real> options;
     options.spline_segment_count = 9;
     options.sphere_segment_count = 24;
     nurbspath::svg_document3<real> document(view, options);

@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.1.4 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.1.5 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -30,11 +30,13 @@ and heterogeneous reading APIs.
 - `vector3<REAL>` with arithmetic, dot and cross products, norms,
   normalization, projections, rejections, reflection, angles, component
   products, interpolation, and approximate comparison.
-- `point3<REAL>` as a position type distinct from a direction.
+- `point3<REAL>` as a position type distinct from a direction, with
+  arbitrary-axis rotation about the world origin.
 - `ray3<REAL>` with native parameter coordinate `s`.
 - `nurbs_spline3<REAL>` with rational evaluation, analytic first, second, and
   third derivatives, unit tangents, approximate arc length, and optional
-  closure. The 2D spline provides the same options.
+  closure, plus validated post-construction definition editing. The 2D spline
+  provides the corresponding curve operations and general definition editing.
 - Global B-spline interpolation through 3D samples at caller-supplied
   arc-length parameter stations.
 - `sphere3<REAL>` parameterized by longitude `u` and latitude `v`.
@@ -75,6 +77,10 @@ Ray directions are not normalized automatically. Therefore ray `s` is a
 distance only when the supplied direction is a unit vector in that entity's
 world. Spline `s` spans the active knot domain. Curves produced by `interpolate`
 retain the exact supplied arc-length stations.
+
+`rotate(axis, angle, point)` rotates a 3D point about the oriented axis through
+the Cartesian world origin. The axis vector need not be normalized, the signed
+angle is measured in radians, and positive angles follow the right-hand rule.
 
 ## Quick start
 
@@ -215,6 +221,10 @@ averaged clamped knots and preserve every supplied station.
 `is_closed()` reports whether the spline was constructed as closed.
 `get_start()` and `get_end()` return cached endpoint positions without another
 evaluation. For a zero-based domain, `get_start()` is the point at `s = 0`.
+Endpoints are derived, read-only values: there are no `set_start` or `set_end`
+functions. To target different endpoints, edit the control-point definition
+with `set_control_point` or `set_control_points`; for non-clamped knots, an
+endpoint can depend on more than the first or last control point.
 
 Position, first derivative, and second derivative are evaluated together by
 `derivatives_at(s)`. Convenience methods `evaluate`, `point_at`,
@@ -228,6 +238,68 @@ weights can still produce nonzero higher derivatives. For unit weights, a
 derivative above the polynomial degree is zero. At an internal knot where the
 curve is not third-order continuous, `third_derivative(s)` returns the
 right-hand span value; at `s_max()` it returns the left-hand span value.
+
+## Editing a spline definition
+
+Spline definition storage remains private so every edit can be validated and
+cached endpoints can be refreshed. Both `nurbs_spline2` and `nurbs_spline3`
+provide indexed `control_point`, `weight`, and `knot` getters with matching
+`set_control_point`, `set_weight`, and `set_knot` operations. Whole-vector
+`set_control_points`, `set_weights`, and `set_knots` operations support
+coordinated edits without exposing mutable storage:
+
+```cpp
+nurbspath::nurbs_spline3<double> editable = quarter_circle;
+
+auto control = editable.control_point(1);
+control.z = 0.25;
+editable.set_control_point(1, control);
+editable.set_weight(1, 0.75);
+
+// Endpoints are available through read-only member calls.
+const auto start = editable.get_start();
+const auto end = editable.get_end();
+
+// Deliberate endpoint placement goes through the control-point definition.
+auto endpoint_controls = editable.control_points();
+endpoint_controls.front() = {1.0, 0.0, 0.1};
+endpoint_controls.back() = {0.0, 1.0, 0.1};
+editable.set_control_points(endpoint_controls);
+
+auto rescaled_knots = editable.knots();
+for (double& knot : rescaled_knots) {
+    knot = 10.0 + 4.0 * knot;
+}
+editable.set_knots(rescaled_knots);
+
+// Replace the knots with a standard open-clamped vector on [0, 4].
+editable.set_standard_knots(4.0);
+
+// The two-argument form selects both ends of the native s domain.
+editable.set_standard_knots(-2.0, 6.0);
+```
+
+`nurbs_spline3::set_standard_knots(end)` uses zero as the domain start, while
+`set_standard_knots(start, end)` accepts finite bounds with a finite positive
+separation. For a single-span spline, the resulting vector is exactly one
+half start values and one half end values. For a multi-span spline, the first
+and last `degree + 1` knots are clamped to the endpoints and the remaining
+simple interior knots are spaced uniformly. Thus the active parameter domain
+becomes `[start, end]` without changing the spline's degree, control points,
+weights, closure state, or tolerance. An interval that is too narrow in `REAL`
+to represent distinct, numerically usable knot spans is rejected.
+
+`set_closed` and `set_tolerance` change the remaining mutable definition
+fields. `set_definition(control_points, weights, knots, closed, tolerance)`
+replaces them together when related counts or a closed seam must change
+atomically. Every mutation builds and validates a complete candidate first;
+invalid input throws without changing the current spline. Successful changes
+refresh `get_start()` and `get_end()` as well as the active parameter domain.
+These mutation functions retain the current degree, and there is no degree
+setter. A successful setter replaces the stored definition, so references,
+pointers, and iterators previously obtained from its getters must not be reused.
+For a closed spline, update both seam controls in one `set_control_points` call
+so validation never observes a temporarily broken seam.
 
 ## Rays and surfaces
 
@@ -383,7 +455,7 @@ plane.
 Add several entities to one document and emit the resulting XML:
 
 ```cpp
-nurbspath::svg_graphics_options<double> graphics;
+nurbspath::svg_graphics_options3<double> graphics;
 graphics.line_width = 1.5;          // SVG/viewBox units (normally pixels)
 graphics.spline_segment_count = 160;
 graphics.sphere_segment_count = 120;
@@ -636,7 +708,8 @@ analytic derivatives, tangent, arc-length approximation, global
 `interpolate`, and `adopt_to_points` operations as the 3D spline, with all
 positions and derivatives remaining two-dimensional. The `project` overloads
 are the explicit bridge from 2D entities to a selected `plane3` embedding and
-preserve spline closure.
+preserve spline closure. Its indexed and general bulk definition setters follow
+the same transactional validation rules as `nurbs_spline3<REAL>`.
 
 `vector3<REAL>` is an aggregate with public `x`, `y`, and `z` components that
 default to zero. It also provides indexed access, exact equality, unary signs,
@@ -655,7 +728,9 @@ default to zero. It provides indexed access, exact equality, translation by a
 vector, subtraction of two points to form a vector, `magnitude()` as Euclidean
 distance and `manhattan_distance()` as L1 distance from the world origin,
 `approximately_equal`, `origin`, and free `distance`, `distance_squared`, and
-`lerp` operations.
+`lerp` operations. The free `rotate(axis, angle, point)` operation rotates a
+point about a world-origin axis using a signed right-handed angle in radians;
+the axis direction is normalized internally.
 
 `ray3<REAL>` provides `origin`, `direction`, `point_at(s)`, `evaluate(s)`, and a
 unit `tangent`. `sphere3<REAL>` provides `center`, `radius`, `point_at(u, v)`,
@@ -671,10 +746,17 @@ geometry with `evaluate`, `point_at`, `derivatives_at`,
 `approximate_arc_length`. Static `interpolate` constructs a new curve, while
 `adopt_to_points` replaces an existing one. Both operations accept a `closed`
 overload. `is_closed()`, `get_start()`, and `get_end()` expose closure and
-cached endpoint values.
+cached, read-only endpoint values. Endpoints have no direct setters and are
+targeted by editing the control-point definition. Indexed and bulk checked
+setters change every definition field except degree, and `set_definition`
+performs coordinated whole-definition changes while retaining that degree.
+`set_standard_knots(end)` and `set_standard_knots(start, end)` replace the knot
+vector with a validated open-clamped uniform definition on the requested native
+parameter domain.
 
 `svg_view3<REAL>` creates validated two-point orthographic or perspective
-cameras. `svg_graphics_options<REAL>` controls line width, spline and sphere
+cameras and reports its mode as `svg_projection3`. The
+`svg_graphics_options3<REAL>` type controls line width, spline and sphere
 segment counts, the plane square side length, and its positive parameter-axis
 marker length. `svg_document3<REAL>` provides entity-specific `add` overloads
 plus plane-and-2D-entity overloads, `svg`, and `write`; the free `to_svg`
@@ -726,7 +808,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.1.4+v0.1.4`; its commit hash is `unavailable` because a file cannot embed
+`0.1.5+v0.1.5`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated

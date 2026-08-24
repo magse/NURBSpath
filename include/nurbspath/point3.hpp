@@ -4,6 +4,7 @@
 #include "nurbspath/serialization.hpp"
 #include "nurbspath/vector3.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <concepts>
@@ -353,6 +354,42 @@ template <std::floating_point REAL>
     const point3<REAL>& left,
     const point3<REAL>& right) noexcept {
     return {left.x - right.x, left.y - right.y, left.z - right.z};
+}
+
+template <std::floating_point REAL>
+/**
+ * @brief Rotate a point about an axis through the Cartesian world origin.
+ *
+ * The axis supplies only the oriented direction of the rotation axis and need
+ * not be normalized. Positive angles follow the right-hand rule. Finite axis
+ * components, angle, and point coordinates are required for a finite result.
+ *
+ * @tparam REAL Floating-point scalar type.
+ * @param axis World-space rotation-axis direction; need not be normalized.
+ * @param angle Signed rotation angle in radians.
+ * @param point Point to rotate.
+ * @return Rotated point in the same Cartesian world coordinate system.
+ * @throws std::domain_error When the axis is the zero vector.
+ */
+[[nodiscard]] point3<REAL> rotate(
+    const vector3<REAL>& axis,
+    REAL angle,
+    const point3<REAL>& point) {
+    const REAL axis_scale = std::max({
+        std::abs(axis.x), std::abs(axis.y), std::abs(axis.z)});
+    if (axis_scale == REAL(0)) {
+        throw std::domain_error("cannot rotate about a zero vector3 axis");
+    }
+    const vector3<REAL> unit_axis =
+        (axis / axis_scale).normalized(REAL(0));
+    const vector3<REAL> position{point.x, point.y, point.z};
+    const REAL cosine = std::cos(angle);
+    const REAL sine = std::sin(angle);
+    const vector3<REAL> rotated =
+        cosine * position +
+        sine * unit_axis.cross(position) +
+        (REAL(1) - cosine) * unit_axis.dot(position) * unit_axis;
+    return {rotated.x, rotated.y, rotated.z};
 }
 
 template <std::floating_point REAL>
