@@ -3,6 +3,7 @@
 #include "test_support.hpp"
 
 #include <cmath>
+#include <stdexcept>
 
 int main() {
     using namespace test_support;
@@ -102,5 +103,75 @@ int main() {
           "multiple knot evaluates finitely");
     check(std::isfinite(joined_curve.first_derivative(0.5).length()),
           "multiple-knot derivative evaluates finitely");
+
+    // The active domain may begin or end inside a repeated-knot run.  The
+    // outer knot keeps the multiplicity at degree + 1, so these are valid
+    // unclamped layouts rather than over-multiplicity error cases.
+    const nurbs_spline3<real> repeated_start_boundary(
+        {{-99.0, 0.0, 0.0},
+         {-9.0, 0.0, 0.0},
+         {0.0, 0.0, 0.0},
+         {0.25, 0.0, 0.0},
+         {0.75, 0.0, 0.0},
+         {1.0, 0.0, 0.0}},
+        {1.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+        {-2.0, -1.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 2.0},
+        2);
+    const point3<real> repeated_start =
+        repeated_start_boundary.evaluate(repeated_start_boundary.s_min());
+    check(std::isfinite(repeated_start.x) && std::isfinite(repeated_start.y) &&
+              std::isfinite(repeated_start.z),
+          "repeated active start knot evaluates finitely");
+    check_point(repeated_start, {0.0, 0.0, 0.0}, 1e-12,
+                "repeated active start knot uses its right-hand span");
+    check_point(repeated_start_boundary.get_start(), repeated_start, 0.0,
+                "repeated active start knot updates the cached start");
+    check(repeated_start_boundary.first_derivative(0.0).approximately_equal(
+              {1.0, 0.0, 0.0}, 1e-12) &&
+              repeated_start_boundary.second_derivative(0.0).is_near_zero(
+                  1e-12) &&
+              repeated_start_boundary.third_derivative(0.0).is_near_zero(
+                  1e-12),
+          "repeated active start knot has finite right-hand derivatives");
+    bool rejected_repeated_boundary_seam = false;
+    try {
+        static_cast<void>(nurbs_spline3<real>(
+            repeated_start_boundary.control_points(),
+            repeated_start_boundary.weights(),
+            repeated_start_boundary.knots(),
+            repeated_start_boundary.degree(),
+            true));
+    } catch (const std::invalid_argument&) {
+        rejected_repeated_boundary_seam = true;
+    }
+    check(rejected_repeated_boundary_seam,
+          "repeated active boundary cannot hide an open seam");
+
+    const nurbs_spline3<real> repeated_end_boundary(
+        {{0.0, 0.0, 0.0},
+         {0.25, 0.0, 0.0},
+         {0.75, 0.0, 0.0},
+         {1.0, 0.0, 0.0},
+         {9.0, 0.0, 0.0},
+         {99.0, 0.0, 0.0}},
+        {1.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+        {-1.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 2.0, 3.0},
+        2);
+    const point3<real> repeated_end =
+        repeated_end_boundary.evaluate(repeated_end_boundary.s_max());
+    check(std::isfinite(repeated_end.x) && std::isfinite(repeated_end.y) &&
+              std::isfinite(repeated_end.z),
+          "repeated active end knot evaluates finitely");
+    check_point(repeated_end, {1.0, 0.0, 0.0}, 1e-12,
+                "repeated active end knot uses its left-hand span");
+    check_point(repeated_end_boundary.get_end(), repeated_end, 0.0,
+                "repeated active end knot updates the cached end");
+    check(repeated_end_boundary.first_derivative(1.0).approximately_equal(
+              {1.0, 0.0, 0.0}, 1e-12) &&
+              repeated_end_boundary.second_derivative(1.0).is_near_zero(
+                  1e-12) &&
+              repeated_end_boundary.third_derivative(1.0).is_near_zero(
+                  1e-12),
+          "repeated active end knot has finite left-hand derivatives");
     return finish("03_test_spline_evaluation");
 }

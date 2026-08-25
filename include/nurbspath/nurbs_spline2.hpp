@@ -295,6 +295,12 @@ public:
 
     /**
      * @brief Evaluate position and the first two analytic derivatives.
+     *
+     * Repeated knots can create empty spans at an active-domain boundary.
+     * At `s_min()` those spans are skipped toward the first nonempty span on
+     * the right; at `s_max()` they are skipped toward the last nonempty span
+     * on the left.
+     *
      * @param s Finite parameter in the active knot domain.
      * @return Position, first derivative, and second derivative in 2D.
      * @throws std::out_of_range When s is non-finite or lies outside a
@@ -660,10 +666,22 @@ private:
     [[nodiscard]] std::size_t find_span(REAL s) const noexcept {
         const std::size_t n = control_points_.size() - 1;
         if (s >= knots_[n + 1]) {
-            return n;
+            // Endpoint evaluation is left-sided. Repeated boundary knots can
+            // leave span n empty, so move to the final nonempty active span.
+            std::size_t span = n;
+            while (span > degree_ && knots_[span] == knots_[span + 1]) {
+                --span;
+            }
+            return span;
         }
         if (s <= knots_[degree_]) {
-            return degree_;
+            // Endpoint evaluation is right-sided. Repeated boundary knots can
+            // leave span degree_ empty, so move to the first nonempty span.
+            std::size_t span = degree_;
+            while (span < n && knots_[span] == knots_[span + 1]) {
+                ++span;
+            }
+            return span;
         }
 
         std::size_t lower = degree_;

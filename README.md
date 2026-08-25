@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.1.5 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.2.1 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -229,7 +229,9 @@ endpoint can depend on more than the first or last control point.
 Position, first derivative, and second derivative are evaluated together by
 `derivatives_at(s)`. Convenience methods `evaluate`, `point_at`,
 `first_derivative`, `second_derivative`, `third_derivative`, and `tangent` are
-also available.
+also available. If repeated knots create zero-width spans at an active-domain
+boundary, evaluation skips them: `s_min()` uses the first nonzero span to its
+right and `s_max()` uses the last nonzero span to its left.
 
 The third rational derivative is evaluated analytically from homogeneous basis
 derivatives and the quotient rule. It does not require degree three: basis and
@@ -808,7 +810,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.1.5+v0.1.5`; its commit hash is `unavailable` because a file cannot embed
+`0.2.1+v0.2.1`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated

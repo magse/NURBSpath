@@ -165,5 +165,73 @@ int main() {
         rejected_parameter = true;
     }
     check(rejected_parameter, "2D spline rejects out-of-domain s");
+
+    // These active boundaries sit inside runs of degree + 1 equal knots.
+    // Outer knots make the layouts valid while exposing zero-width candidate
+    // spans at s_min and s_max.
+    const nurbs_spline2<real> repeated_start_boundary(
+        {{-99.0, 0.0},
+         {-9.0, 0.0},
+         {0.0, 0.0},
+         {0.25, 0.0},
+         {0.75, 0.0},
+         {1.0, 0.0}},
+        {1.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+        {-2.0, -1.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 2.0},
+        2);
+    const point2<real> repeated_start =
+        repeated_start_boundary.evaluate(repeated_start_boundary.s_min());
+    check(std::isfinite(repeated_start.x) && std::isfinite(repeated_start.y),
+          "repeated 2D active start knot evaluates finitely");
+    check_point2(repeated_start, {0.0, 0.0}, 1e-12,
+                 "repeated 2D active start knot uses its right-hand span");
+    check_point2(repeated_start_boundary.get_start(), repeated_start, 0.0,
+                 "repeated 2D active start knot updates the cached start");
+    check(repeated_start_boundary.first_derivative(0.0).approximately_equal(
+              {1.0, 0.0}, 1e-12) &&
+              repeated_start_boundary.second_derivative(0.0).is_near_zero(
+                  1e-12) &&
+              repeated_start_boundary.third_derivative(0.0).is_near_zero(
+                  1e-12),
+          "repeated 2D active start knot has finite right-hand derivatives");
+    bool rejected_repeated_boundary_seam = false;
+    try {
+        static_cast<void>(nurbs_spline2<real>(
+            repeated_start_boundary.control_points(),
+            repeated_start_boundary.weights(),
+            repeated_start_boundary.knots(),
+            repeated_start_boundary.degree(),
+            true));
+    } catch (const std::invalid_argument&) {
+        rejected_repeated_boundary_seam = true;
+    }
+    check(rejected_repeated_boundary_seam,
+          "repeated 2D active boundary cannot hide an open seam");
+
+    const nurbs_spline2<real> repeated_end_boundary(
+        {{0.0, 0.0},
+         {0.25, 0.0},
+         {0.75, 0.0},
+         {1.0, 0.0},
+         {9.0, 0.0},
+         {99.0, 0.0}},
+        {1.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+        {-1.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 2.0, 3.0},
+        2);
+    const point2<real> repeated_end =
+        repeated_end_boundary.evaluate(repeated_end_boundary.s_max());
+    check(std::isfinite(repeated_end.x) && std::isfinite(repeated_end.y),
+          "repeated 2D active end knot evaluates finitely");
+    check_point2(repeated_end, {1.0, 0.0}, 1e-12,
+                 "repeated 2D active end knot uses its left-hand span");
+    check_point2(repeated_end_boundary.get_end(), repeated_end, 0.0,
+                 "repeated 2D active end knot updates the cached end");
+    check(repeated_end_boundary.first_derivative(1.0).approximately_equal(
+              {1.0, 0.0}, 1e-12) &&
+              repeated_end_boundary.second_derivative(1.0).is_near_zero(
+                  1e-12) &&
+              repeated_end_boundary.third_derivative(1.0).is_near_zero(
+                  1e-12),
+          "repeated 2D active end knot has finite left-hand derivatives");
     return finish("11_test_2d_spline");
 }
