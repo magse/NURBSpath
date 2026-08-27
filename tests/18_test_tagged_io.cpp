@@ -311,6 +311,10 @@ int main() {
         "0 0 0 1 1 0 0 -1 0 0 1 1\n",
         "invalid spline weight is rejected");
     check_malformed(
+        "1 spline3 v1 0 0 1e-12 2 3 "
+        "0 0 0 1 1 0 0 1 0 0.5 1\n",
+        "invalid spline degree is rejected during knot-count validation");
+    check_malformed(
         "1 spline3 v1 1 0 1e-12 999999999999999999 "
         "1000000000000000001\n",
         "unreasonable spline counts fail before allocation");

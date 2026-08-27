@@ -142,6 +142,41 @@ template <std::floating_point REAL>
 }
 
 /**
+ * @brief Allocate a 2D NURBS spline from a detached definition value.
+ * @tparam REAL Floating-point scalar type.
+ * @param definition Owning control-point, weight, knot, closure, and
+ * tolerance definition.
+ * @param degree Positive degree below the control-point count.
+ * @return Shared smart pointer owning the validated 2D spline.
+ * @throws std::invalid_argument When the definition, degree, or closed seam is invalid.
+ * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_spline2<REAL>> make_nurbs_spline2(
+    spline2_definition<REAL> definition,
+    std::size_t degree) {
+    return std::make_shared<nurbs_spline2<REAL>>(
+        std::move(definition), degree);
+}
+
+/**
+ * @brief Allocate the definition-centric 2D spline alias.
+ * @tparam REAL Floating-point scalar type.
+ * @param definition Owning detached spline definition.
+ * @param degree Positive degree below the control-point count.
+ * @return Shared smart pointer owning the validated 2D spline.
+ * @throws std::invalid_argument When the definition, degree, or closed seam is invalid.
+ * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_defined_spline2<REAL>>
+make_nurbs_defined_spline2(
+    spline2_definition<REAL> definition,
+    std::size_t degree) {
+    return make_nurbs_spline2<REAL>(std::move(definition), degree);
+}
+
+/**
  * @brief Allocate a complete 2D NURBS definition with shared ownership.
  * @tparam REAL Floating-point scalar type.
  * @param control_points Control points in the 2D world.
@@ -481,6 +516,41 @@ template <std::floating_point REAL>
     REAL tolerance = vector3<REAL>::default_tolerance()) {
     return make_plane3_from_u_direction<REAL>(
         origin, u_point - origin, plane_point, tolerance);
+}
+
+/**
+ * @brief Allocate a 3D NURBS spline from a detached definition value.
+ * @tparam REAL Floating-point scalar type.
+ * @param definition Owning control-point, weight, knot, closure, and
+ * tolerance definition.
+ * @param degree Positive degree below the control-point count.
+ * @return Shared smart pointer owning the validated 3D spline.
+ * @throws std::invalid_argument When the definition, degree, or closed seam is invalid.
+ * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_spline3<REAL>> make_nurbs_spline3(
+    spline3_definition<REAL> definition,
+    std::size_t degree) {
+    return std::make_shared<nurbs_spline3<REAL>>(
+        std::move(definition), degree);
+}
+
+/**
+ * @brief Allocate the definition-centric 3D spline alias.
+ * @tparam REAL Floating-point scalar type.
+ * @param definition Owning detached spline definition.
+ * @param degree Positive degree below the control-point count.
+ * @return Shared smart pointer owning the validated 3D spline.
+ * @throws std::invalid_argument When the definition, degree, or closed seam is invalid.
+ * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_defined_spline3<REAL>>
+make_nurbs_defined_spline3(
+    spline3_definition<REAL> definition,
+    std::size_t degree) {
+    return make_nurbs_spline3<REAL>(std::move(definition), degree);
 }
 
 /**

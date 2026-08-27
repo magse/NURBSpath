@@ -169,7 +169,7 @@ self-contained and dependency-free.
 
 - `CMakeLists.txt`: build, test, documentation, install, and package export
 - `include/nurbspath/`: public header-only implementation
-- `tests/01_test_*.cpp` through `tests/19_test_*.cpp`: focused numbered tests
+- `tests/01_test_*.cpp` through `tests/21_test_*.cpp`: focused numbered tests
 - `tests/test_support.hpp`: shared dependency-free test helpers
 - `examples/basic_usage.cpp`: minimal runnable 3D integration example
 - `examples/basic_usage_2d.cpp`: minimal runnable native 2D example

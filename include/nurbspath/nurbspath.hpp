@@ -21,6 +21,8 @@ namespace nurbspath {}
 #include "nurbspath/ray2.hpp"
 #include "nurbspath/ray3.hpp"
 #include "nurbspath/serialization.hpp"
+#include "nurbspath/spline2_definition.hpp"
+#include "nurbspath/spline3_definition.hpp"
 #include "nurbspath/sphere3.hpp"
 #include "nurbspath/tagged_serialization.hpp"
 #include "nurbspath/utility.hpp"

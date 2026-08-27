@@ -21,7 +21,9 @@ Every version 1 row has this prefix and one entity-specific payload:
 The canonical writer separates tokens with one ASCII space and terminates each
 row with a newline. The four case-sensitive type tokens are `point3`,
 `vector3`, `sphere3`, and `spline3`. The `spline3` storage token represents the
-C++ type `nurbspath::nurbs_spline3<REAL>`.
+C++ type `nurbspath::nurbs_spline3<REAL>`. The definition-centric spelling
+`nurbspath::nurbs_defined_spline3<REAL>` is an exact alias of that type and does
+not introduce another token or record layout.
 
 `<tag>` is an unsigned base-10 integer that must fit in `std::size_t` on the
 reading system. Tags are therefore textually portable, but a value produced on
@@ -79,17 +81,29 @@ in order:
    that control point's weight.
 7. `knot_count` knot values.
 
+All five fields of the public detached
+`nurbspath::spline3_definition<REAL>` aggregate map directly to this payload:
+`control_points` and their paired `weights`, `knots`, `closed`, and
+`tolerance`. `control_count` and `knot_count` are derived framing values.
+Degree is deliberately kept separate when a definition is constructed, cloned
+from a spline with `definition()`, or adopted with
+`set_definition(definition)`.
+
 All control coordinates, weights, knots, and the tolerance must be finite.
 Weights must be strictly positive, knots must be nondecreasing, and
-`knot_count` must equal `control_count + degree + 1`. The ordinary
+`knot_count` must equal `control_count + degree + 1`, the value returned by
+`nurbspath::nurbs_knot_count(degree, control_count)`. The
 `nurbs_spline3` constructor validation also applies: the degree must be
 positive and below the control-point count, and a row marked closed must
 evaluate to coincident active-domain endpoints within the spline's closure
 tolerance.
 
-This layout stores the complete spline definition. Reading it preserves the
-control points, paired weights, knot vector, degree, closure state, tolerance,
-and native active `s` domain.
+This layout stores the separate degree together with every detached definition
+field. Reading it preserves the control points, paired weights, knot vector,
+degree, closure state, tolerance, and native active `s` domain. Typed and
+heterogeneous reads allocate the canonical `nurbs_spline3<REAL>` spelling;
+because `nurbs_defined_spline3<REAL>` is the same exact type, no conversion or
+information loss is involved.
 
 ## Canonical writer output
 

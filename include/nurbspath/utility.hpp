@@ -47,6 +47,38 @@ struct numerical_settings {
     }
 };
 
+/**
+ * @brief Calculate the knot-vector size required by a valid NURBS spline.
+ *
+ * A spline of degree `p` with `C` control points requires `C + p + 1`
+ * knots. The helper applies equally to 2D and 3D splines and can be used
+ * before allocating their definition vectors.
+ *
+ * @param degree Positive spline degree.
+ * @param control_point_count Number of control points; must exceed `degree`.
+ * @return Required number of values in the complete knot vector.
+ * @throws std::invalid_argument When `degree` is zero or the control-point
+ * count does not exceed it.
+ * @throws std::overflow_error When the required count is not representable
+ * by `std::size_t`.
+ */
+[[nodiscard]] constexpr std::size_t nurbs_knot_count(
+    std::size_t degree,
+    std::size_t control_point_count) {
+    if (degree == 0) {
+        throw std::invalid_argument("NURBS degree must be positive");
+    }
+    if (control_point_count <= degree) {
+        throw std::invalid_argument(
+            "NURBS requires more control points than its degree");
+    }
+    if (control_point_count >
+        std::numeric_limits<std::size_t>::max() - degree - 1) {
+        throw std::overflow_error("NURBS knot count overflows std::size_t");
+    }
+    return control_point_count + degree + 1;
+}
+
 template <std::floating_point REAL>
 /**
  * @brief Square a scalar.

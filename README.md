@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.2.1 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.2.2 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -35,8 +35,11 @@ and heterogeneous reading APIs.
 - `ray3<REAL>` with native parameter coordinate `s`.
 - `nurbs_spline3<REAL>` with rational evaluation, analytic first, second, and
   third derivatives, unit tangents, approximate arc length, and optional
-  closure, plus validated post-construction definition editing. The 2D spline
-  provides the corresponding curve operations and general definition editing.
+  closure, plus validated post-construction definition editing. Detached
+  `spline2_definition` and `spline3_definition` values group every editable
+  field, and the exact `nurbs_defined_spline2` and `nurbs_defined_spline3`
+  aliases provide definition-centric spellings. The 2D spline provides the
+  corresponding curve operations and general definition editing.
 - Global B-spline interpolation through 3D samples at caller-supplied
   arc-length parameter stations.
 - `sphere3<REAL>` parameterized by longitude `u` and latitude `v`.
@@ -127,10 +130,10 @@ direction, and another point on the plane. `make_plane3_from_u_direction`
 replaces the second point with a positive-u direction vector. In both forms,
 the third point's component perpendicular to the u-axis defines positive v.
 
-The 2D and 3D spline factories accept either three `std::vector`
-collections or three `std::valarray` collections for control points, weights,
-and knots. Valarray values are copied in index order into the spline's vector
-storage:
+The ordinary 2D and 3D spline factories accept a matching detached definition,
+three `std::vector` collections, or three `std::valarray` collections for
+control points, weights, and knots. Valarray values are copied in index order
+into the spline's vector storage:
 
 ```cpp
 #include <valarray>
@@ -182,14 +185,27 @@ provides the same operation as a mutating member.
 
 ## Constructing a NURBS spline directly
 
-For a degree `p` curve with `n + 1` control points, provide:
+For a degree `p` curve with `C = n + 1` control points, provide:
 
-- `n + 1` world-space control points;
-- `n + 1` finite positive weights;
-- `n + p + 2` nondecreasing knots;
+- `C` world-space control points;
+- `C` finite positive weights;
+- `C + p + 1` nondecreasing knots (equivalently `n + p + 2`);
 - degree `p >= 1`, with `p < control_point_count`.
 
-The active parameter domain is `[knots[p], knots[n + 1]]`.
+The active parameter domain is `[knots[p], knots[C]]`. The shared helper
+calculates the required allocation size before either a 2D or 3D spline is
+constructed:
+
+```cpp
+constexpr std::size_t degree = 5;
+constexpr std::size_t control_point_count = 7;
+constexpr std::size_t knot_count =
+    nurbspath::nurbs_knot_count(degree, control_point_count); // 13
+```
+
+The helper throws `std::invalid_argument` for a zero degree or when the
+control-point count does not exceed the degree. It throws
+`std::overflow_error` when the required count cannot fit in `std::size_t`.
 
 ```cpp
 const double root_half = std::sqrt(0.5);
@@ -243,12 +259,68 @@ right-hand span value; at `s_max()` it returns the left-hand span value.
 
 ## Editing a spline definition
 
-Spline definition storage remains private so every edit can be validated and
-cached endpoints can be refreshed. Both `nurbs_spline2` and `nurbs_spline3`
-provide indexed `control_point`, `weight`, and `knot` getters with matching
+The live definition inside a spline remains private so every adopted edit can
+be validated and cached endpoints can be refreshed. Public
+`spline2_definition<REAL>` and `spline3_definition<REAL>` aggregates provide
+owning, detached drafts and snapshots. They contain `control_points`,
+`weights`, `knots`, `closed`, and `tolerance`; the spline degree is deliberately
+separate. A detached value may be incomplete or temporarily invalid while it
+is being edited.
+
+Both ordinary spline constructors accept a detached definition followed by its
+degree. `nurbs_defined_spline2<REAL>` and `nurbs_defined_spline3<REAL>` are
+exact aliases of `nurbs_spline2<REAL>` and `nurbs_spline3<REAL>`, respectively,
+rather than distinct runtime types. They therefore retain every ordinary
+spline operation and interoperate with projection, numerical queries,
+graphics, and tagged I/O without conversion:
+
+```cpp
+nurbspath::spline3_definition<double> initial{
+    {{1.0, 0.0, 0.0}, {1.0, 1.0, 0.0}, {0.0, 1.0, 0.0}},
+    {1.0, std::sqrt(0.5), 1.0},
+    {0.0, 0.0, 0.0, 1.0, 1.0, 1.0},
+    false,
+    1.0e-12};
+
+nurbspath::nurbs_defined_spline3<double> editable(initial, 2);
+
+// The constructor cloned this lvalue. Later edits to it are still detached.
+initial.weights[1] = 0.75;
+
+auto candidate = editable.definition();
+candidate.control_points[1].z = 0.25;
+candidate.weights[1] = 0.75;
+for (double& knot : candidate.knots) {
+    knot = 10.0 + 4.0 * knot;
+}
+
+// Validate and adopt every editable field together; degree remains 2.
+editable.set_definition(candidate);
+```
+
+`definition()` always returns a deep-copy snapshot. Changing the snapshot or
+the original constructor argument cannot change the path implicitly. The path
+changes only after `set_definition(snapshot)` validates and adopts the complete
+candidate. If validation throws, the spline, its cached endpoints, and its
+degree remain unchanged. An rvalue definition can be moved into either the
+constructor or setter.
+
+The corresponding allocation helpers also accept detached definitions. Both
+names below allocate the same exact spline type with shared ownership:
+
+```cpp
+auto ordinary_owner = nurbspath::make_nurbs_spline3(initial, 2);
+auto defined_owner = nurbspath::make_nurbs_defined_spline3(initial, 2);
+```
+
+Equivalent constructors, snapshots, setters, aliases, and creator overloads
+are available for 2D definitions.
+
+For smaller edits, both `nurbs_spline2` and `nurbs_spline3` provide indexed
+`control_point`, `weight`, and `knot` getters with matching
 `set_control_point`, `set_weight`, and `set_knot` operations. Whole-vector
 `set_control_points`, `set_weights`, and `set_knots` operations support
-coordinated edits without exposing mutable storage:
+coordinated edits without exposing mutable live storage:
 
 ```cpp
 nurbspath::nurbs_spline3<double> editable = quarter_circle;
@@ -286,22 +358,26 @@ editable.set_standard_knots(-2.0, 6.0);
 separation. For a single-span spline, the resulting vector is exactly one
 half start values and one half end values. For a multi-span spline, the first
 and last `degree + 1` knots are clamped to the endpoints and the remaining
-simple interior knots are spaced uniformly. Thus the active parameter domain
-becomes `[start, end]` without changing the spline's degree, control points,
-weights, closure state, or tolerance. An interval that is too narrow in `REAL`
-to represent distinct, numerically usable knot spans is rejected.
+`control_point_count - degree - 1` simple interior knots are spaced uniformly.
+The total returned by `nurbs_knot_count` can therefore be odd. The active
+parameter domain becomes `[start, end]` without changing the spline's degree,
+control points, weights, closure state, or tolerance. An interval that is too
+narrow in `REAL` to represent distinct, numerically usable knot spans is
+rejected.
 
 `set_closed` and `set_tolerance` change the remaining mutable definition
-fields. `set_definition(control_points, weights, knots, closed, tolerance)`
-replaces them together when related counts or a closed seam must change
-atomically. Every mutation builds and validates a complete candidate first;
-invalid input throws without changing the current spline. Successful changes
-refresh `get_start()` and `get_end()` as well as the active parameter domain.
-These mutation functions retain the current degree, and there is no degree
-setter. A successful setter replaces the stored definition, so references,
-pointers, and iterators previously obtained from its getters must not be reused.
-For a closed spline, update both seam controls in one `set_control_points` call
-so validation never observes a temporarily broken seam.
+fields. The five-argument
+`set_definition(control_points, weights, knots, closed, tolerance)` and the
+single-argument `set_definition(definition)` overload replace them together
+when related counts or a closed seam must change atomically. Every mutation
+builds and validates a complete candidate first; invalid input throws without
+changing the current spline. Successful changes refresh `get_start()` and
+`get_end()` as well as the active parameter domain. These mutation functions
+retain the current degree, and there is no degree setter. A successful setter
+replaces the stored definition, so references, pointers, and iterators
+previously obtained from its getters must not be reused. For a closed spline,
+update both seam controls in one bulk or definition-based call so validation
+never observes a temporarily broken seam.
 
 ## Rays and surfaces
 
@@ -700,7 +776,9 @@ auto point_record = nurbspath::point3<double>::tag_read(input);
 The general `nurbspath::tag_read<REAL>(input)` routine returns
 `std::optional<tagged_entity3<REAL>>`. Its `entity` member is a type-safe
 variant of shared pointers to the four supported concrete types. The on-disk
-token for `nurbs_spline3` is the shorter stable name `spline3`. Unknown,
+token for `nurbs_spline3` is the shorter stable name `spline3`.
+`nurbs_defined_spline3` is an exact alias, so it uses that same token and
+reader result rather than introducing another stored entity type. Unknown,
 malformed, invalid, or surplus fields set `failbit`, and one complete physical
 row is consumed per call. See [DATA.md](DATA.md) for the exact `v1` grammar,
 spline field order, failure behavior, and portability rules.
@@ -710,8 +788,9 @@ analytic derivatives, tangent, arc-length approximation, global
 `interpolate`, and `adopt_to_points` operations as the 3D spline, with all
 positions and derivatives remaining two-dimensional. The `project` overloads
 are the explicit bridge from 2D entities to a selected `plane3` embedding and
-preserve spline closure. Its indexed and general bulk definition setters follow
-the same transactional validation rules as `nurbs_spline3<REAL>`.
+preserve spline closure. `spline2_definition`, `definition()`, and both
+`set_definition` forms follow the same detached and transactional rules as
+their 3D counterparts.
 
 `vector3<REAL>` is an aggregate with public `x`, `y`, and `z` components that
 default to zero. It also provides indexed access, exact equality, unary signs,
@@ -741,9 +820,12 @@ the two basis directions, `point_at(u, v)`, `signed_distance_to`, `project`, and
 `parameters_of`, plus `signed_distance_from_origin` for its equivalent Hessian
 normal form.
 
-`nurbs_spline3<REAL>` exposes its definition with `control_points`, `weights`,
-`knots`, `degree`, and `tolerance`; its domain with `s_min` and `s_max`; and its
-geometry with `evaluate`, `point_at`, `derivatives_at`,
+`nurbs_spline3<REAL>` exposes its fields with `control_points`, `weights`,
+`knots`, `degree`, and `tolerance`, and clones every editable field except
+degree through `definition()`. `spline3_definition<REAL>` is the corresponding
+detached aggregate, and `nurbs_defined_spline3<REAL>` is an exact alias of the
+ordinary spline type. The spline exposes its domain with `s_min` and `s_max`
+and its geometry with `evaluate`, `point_at`, `derivatives_at`,
 `first_derivative`, `second_derivative`, `third_derivative`, `tangent`, and
 `approximate_arc_length`. Static `interpolate` constructs a new curve, while
 `adopt_to_points` replaces an existing one. Both operations accept a `closed`
@@ -768,22 +850,25 @@ provide the separate flat, solid-line renderer that accepts native 2D entities
 only.
 
 `creators.hpp` provides `make_vector2`, `make_point2`, `make_ray2`,
-`make_ray2_from_points`, `make_circle2`, `make_nurbs_spline2`, `make_vector3`,
-`make_point3`, `make_ray3`, `make_ray3_from_points`, `make_sphere3`, all three
-`make_plane3` constructor forms, `make_plane3_from_points`,
-`make_plane3_from_u_direction`, and `make_nurbs_spline3`. Every function returns
-a shared-ownership smart pointer. Copying a result keeps the same entity alive
-until the final owner releases it. The two spline factories provide both
-`std::vector` and `std::valarray` collection overloads, including forms that
-accept `closed` after `degree`.
+`make_ray2_from_points`, `make_circle2`, `make_nurbs_spline2`,
+`make_nurbs_defined_spline2`, `make_vector3`, `make_point3`, `make_ray3`,
+`make_ray3_from_points`, `make_sphere3`, all three `make_plane3` constructor
+forms, `make_plane3_from_points`, `make_plane3_from_u_direction`,
+`make_nurbs_spline3`, and `make_nurbs_defined_spline3`. Every function returns a
+shared-ownership smart pointer. Copying a result keeps the same entity alive
+until the final owner releases it. The ordinary spline factories provide
+definition-value overloads as well as `std::vector` and `std::valarray`
+collection overloads, including forms that accept `closed` after `degree`.
+The definition-centric factory names accept the matching detached definition
+and degree.
 
-Reusable routines in `utility.hpp` include `approximately_equal`, `square`,
-scaled-pivot `solve_linear_system`, `bisect_root`, `golden_section_minimize`,
-and sampled `find_roots`. These routines validate settings and throw standard
-exceptions for invalid domains, singular systems, or non-finite residuals.
-Geometry constructors similarly reject zero directions/normals, nonpositive
-radii/weights, invalid knot definitions, and parameters outside a spline's
-active domain.
+Reusable routines in `utility.hpp` include `nurbs_knot_count`,
+`approximately_equal`, `square`, scaled-pivot `solve_linear_system`,
+`bisect_root`, `golden_section_minimize`, and sampled `find_roots`. These
+routines validate settings and throw standard exceptions for invalid domains,
+singular systems, or non-finite residuals. Geometry constructors similarly
+reject zero directions/normals, nonpositive radii/weights, invalid knot
+definitions, and parameters outside a spline's active domain.
 
 ## Version metadata
 
@@ -810,7 +895,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.2.1+v0.2.1`; its commit hash is `unavailable` because a file cannot embed
+`0.2.2+v0.2.2`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated
@@ -829,10 +914,12 @@ fallback, where that macro is zero.
 | `nurbspath/point2.hpp` | 2D position and point distance |
 | `nurbspath/ray2.hpp` | Forward 2D parametric ray |
 | `nurbspath/circle2.hpp` | Parameterized 2D circle |
+| `nurbspath/spline2_definition.hpp` | Detached editable 2D spline definition |
 | `nurbspath/nurbs_spline2.hpp` | 2D rational spline, derivatives, interpolation |
 | `nurbspath/vector3.hpp` | 3D vector and free vector operations |
 | `nurbspath/point3.hpp` | 3D position and point distance |
 | `nurbspath/ray3.hpp` | Forward parametric ray |
+| `nurbspath/spline3_definition.hpp` | Detached editable 3D spline definition |
 | `nurbspath/nurbs_spline3.hpp` | Rational spline, derivatives, interpolation |
 | `nurbspath/sphere3.hpp` | Parameterized sphere |
 | `nurbspath/serialization.hpp` | Coordinate and tagged-record I/O support |
@@ -842,7 +929,7 @@ fallback, where that macro is zero.
 | `nurbspath/creators.hpp` | `std::shared_ptr` factories for all geometry entities |
 | `nurbspath/graphics.hpp` | Flat 2D and 3D SVG diagnostics |
 | `nurbspath/manual.hpp` | Extension point under `nurbspath::manual` |
-| `nurbspath/utility.hpp` | Settings, root/minimum finders, linear solver |
+| `nurbspath/utility.hpp` | Knot sizing, settings, root/minimum finders, linear solver |
 | `nurbspath/intersections.hpp` | 2D circle and 3D surface intersections |
 | `nurbspath/distance.hpp` | 2D and 3D point-entity distances |
 | `nurbspath/nurbspath.hpp` | Complete public API |

@@ -2,6 +2,7 @@
 
 #include "nurbspath/config.hpp"
 #include "nurbspath/point2.hpp"
+#include "nurbspath/spline2_definition.hpp"
 #include "nurbspath/utility.hpp"
 
 #include <algorithm>
@@ -44,10 +45,35 @@ template <std::floating_point REAL>
 class nurbs_spline2 {
 public:
     /**
+     * @brief Construct a 2D NURBS curve from a detached definition value.
+     *
+     * The definition fields are moved from an rvalue or copied from an
+     * lvalue. The degree remains separate from `spline2_definition` and is
+     * validated together with the complete candidate.
+     *
+     * @param definition Owning control-point, weight, knot, closure, and
+     * tolerance definition.
+     * @param degree Positive degree below the control-point count.
+     * @throws std::invalid_argument When the definition, degree, or closed
+     * seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero
+     * homogeneous weight.
+     */
+    nurbs_spline2(spline2_definition<REAL> definition, std::size_t degree)
+        : nurbs_spline2(
+              std::move(definition.control_points),
+              std::move(definition.weights),
+              std::move(definition.knots),
+              degree,
+              definition.closed,
+              definition.tolerance) {}
+
+    /**
      * @brief Construct a 2D NURBS curve from its complete definition.
      * @param control_points Control points in the 2D world.
      * @param weights Positive rational weight for every control point.
-     * @param knots Nondecreasing knot vector.
+     * @param knots Nondecreasing vector with
+     * `nurbs_knot_count(degree, control_points.size())` values.
      * @param degree Positive degree below the control-point count.
      * @param tolerance Positive definition and parameter-boundary tolerance.
      * @throws std::invalid_argument When counts, degree, weights, knots, or tolerance are invalid.
@@ -70,7 +96,8 @@ public:
      * @brief Construct an open or closed 2D NURBS curve.
      * @param control_points Control points in the 2D world.
      * @param weights Positive rational weight for every control point.
-     * @param knots Nondecreasing knot vector.
+     * @param knots Nondecreasing vector with
+     * `nurbs_knot_count(degree, control_points.size())` values.
      * @param degree Positive degree below the control-point count.
      * @param closed True when the two active-domain endpoints must coincide.
      * @param tolerance Positive validation and parameter-boundary tolerance.
@@ -111,6 +138,26 @@ public:
 
     /** @brief Report whether the spline has a closed seam. @return True for closed curves. */
     [[nodiscard]] bool is_closed() const noexcept { return closed_; }
+
+    /**
+     * @brief Clone every editable definition field into a detached value.
+     *
+     * Editing the returned snapshot does not affect this spline until it is
+     * supplied to `set_definition`. The polynomial degree is deliberately not
+     * part of the returned aggregate.
+     *
+     * @return Deep-copy snapshot of control points, weights, knots, closure,
+     * and tolerance.
+     * @throws std::bad_alloc When allocating the copied vectors fails.
+     */
+    [[nodiscard]] spline2_definition<REAL> definition() const {
+        return {
+            .control_points = control_points_,
+            .weights = weights_,
+            .knots = knots_,
+            .closed = closed_,
+            .tolerance = tolerance_};
+    }
 
     /**
      * @brief Get one control point by index.
@@ -273,6 +320,25 @@ public:
             std::move(knots),
             closed,
             tolerance);
+    }
+
+    /**
+     * @brief Atomically adopt a detached definition while retaining degree.
+     *
+     * The complete candidate is validated and cached endpoints are refreshed
+     * before commit. Failure leaves this spline and its degree unchanged.
+     *
+     * @param definition Owning candidate containing every editable field.
+     * @throws std::invalid_argument When the candidate or closed seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
+     */
+    void set_definition(spline2_definition<REAL> definition) {
+        commit_definition(
+            std::move(definition.control_points),
+            std::move(definition.weights),
+            std::move(definition.knots),
+            definition.closed,
+            definition.tolerance);
     }
 
     /**
@@ -480,7 +546,8 @@ public:
         const std::size_t point_count = samples.size();
         const std::size_t degree = std::min(requested_degree, point_count - 1);
         const std::size_t n = point_count - 1;
-        std::vector<REAL> knots(point_count + degree + 1, REAL(0));
+        std::vector<REAL> knots(
+            nurbs_knot_count(degree, point_count), REAL(0));
         std::fill_n(knots.begin(), degree + 1, arc_length_parameters.front());
         std::fill_n(
             knots.end() - static_cast<std::ptrdiff_t>(degree + 1),
@@ -616,7 +683,8 @@ private:
             throw std::invalid_argument(
                 "2D NURBS weights and control points must have equal size");
         }
-        if (knots_.size() != control_points_.size() + degree_ + 1) {
+        if (knots_.size() !=
+            nurbs_knot_count(degree_, control_points_.size())) {
             throw std::invalid_argument(
                 "2D NURBS knot count must equal control count + degree + 1");
         }
@@ -848,5 +916,16 @@ private:
     point2<REAL> start_{};
     point2<REAL> end_{};
 };
+
+/**
+ * @brief Definition-centric spelling of `nurbs_spline2`.
+ *
+ * This exact alias preserves interoperability with all APIs that accept an
+ * ordinary 2D spline. It does not create a distinct runtime spline type.
+ *
+ * @tparam REAL Floating-point scalar type.
+ */
+template <std::floating_point REAL>
+using nurbs_defined_spline2 = nurbs_spline2<REAL>;
 
 } // namespace nurbspath
