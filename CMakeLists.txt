@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(
     nurbspath
-    VERSION 0.2.2
+    VERSION 0.3.0
     DESCRIPTION "Header-only C++20 geometry and numerical queries for 2D and 3D NURBS paths"
     LANGUAGES CXX
 )
@@ -120,6 +120,7 @@ if(NURBSPATH_BUILD_TESTS)
         tests/19_test_spline_mutation.cpp
         tests/20_test_knot_count.cpp
         tests/21_test_spline_definitions.cpp
+        tests/22_test_spline_parameters.cpp
     )
     set(NURBSPATH_TEST_TARGETS)
     foreach(test_source IN LISTS NURBSPATH_TEST_SOURCES)

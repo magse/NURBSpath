@@ -162,6 +162,145 @@ public:
     }
 
     /**
+     * @brief Get the number of editable scalar parameters.
+     *
+     * Control-point coordinates appear first in point-major X/Y/Z order,
+     * followed by all weights and all knots. Degree, closure, and tolerance
+     * are excluded.
+     *
+     * @return Current number of indexed scalar parameters.
+     */
+    [[nodiscard]] std::size_t number_of_parameters() const noexcept {
+        return control_points_.size() * std::size_t(3) +
+               weights_.size() + knots_.size();
+    }
+
+    /**
+     * @brief Get one editable scalar parameter by its flattened index.
+     * @param index Zero-based scalar parameter index.
+     * @return Current parameter value.
+     * @throws std::out_of_range When index is not below
+     * `number_of_parameters()`.
+     */
+    [[nodiscard]] REAL get_parameter(std::size_t index) const {
+        const std::size_t coordinate_count =
+            control_points_.size() * std::size_t(3);
+        if (index < coordinate_count) {
+            const point3<REAL>& point = control_points_[index / 3];
+            switch (index % 3) {
+            case 0:
+                return point.x;
+            case 1:
+                return point.y;
+            default:
+                return point.z;
+            }
+        }
+        index -= coordinate_count;
+
+        if (index < weights_.size()) {
+            return weights_[index];
+        }
+        index -= weights_.size();
+
+        if (index < knots_.size()) {
+            return knots_[index];
+        }
+        throw std::out_of_range("3D NURBS parameter index is out of range");
+    }
+
+    /**
+     * @brief Get the descriptive name of one scalar parameter in the current
+     * definition.
+     *
+     * Names use `P[i].x`, `P[i].y`, `P[i].z`, `W[i]`, and `K[i]`, with
+     * zero-based vector indices.
+     *
+     * @param index Zero-based scalar parameter index.
+     * @return Parameter name in the documented flattened order.
+     * @throws std::out_of_range When index is not below
+     * `number_of_parameters()`.
+     * @throws std::bad_alloc When allocating the returned string fails.
+     */
+    [[nodiscard]] std::string parameter_name(std::size_t index) const {
+        const std::size_t coordinate_count =
+            control_points_.size() * std::size_t(3);
+        if (index < coordinate_count) {
+            const std::size_t point_index = index / 3;
+            constexpr char coordinates[] = {'x', 'y', 'z'};
+            return "P[" + std::to_string(point_index) + "]." +
+                   coordinates[index % 3];
+        }
+        index -= coordinate_count;
+
+        if (index < weights_.size()) {
+            return "W[" + std::to_string(index) + "]";
+        }
+        index -= weights_.size();
+
+        if (index < knots_.size()) {
+            return "K[" + std::to_string(index) + "]";
+        }
+        throw std::out_of_range("3D NURBS parameter index is out of range");
+    }
+
+    /**
+     * @brief Validate and atomically replace one scalar parameter.
+     *
+     * A complete detached candidate is built and validated immediately.
+     * Degree, closure, and tolerance remain unchanged. Returning false leaves
+     * the spline, its active domain, and cached endpoints unchanged. Correlated
+     * edits that cannot be valid one at a time should use `set_definition`
+     * instead.
+     *
+     * @param index Zero-based scalar parameter index.
+     * @param value Candidate scalar value.
+     * @return True when the complete candidate is valid and committed; false
+     * for an out-of-range index or rejected spline definition.
+     * @throws std::bad_alloc When allocating the detached candidate fails.
+     */
+    [[nodiscard]] bool set_parameter(std::size_t index, REAL value) {
+        if (index >= number_of_parameters()) {
+            return false;
+        }
+
+        spline3_definition<REAL> candidate = definition();
+        const std::size_t coordinate_count =
+            candidate.control_points.size() * std::size_t(3);
+        if (index < coordinate_count) {
+            point3<REAL>& point = candidate.control_points[index / 3];
+            switch (index % 3) {
+            case 0:
+                point.x = value;
+                break;
+            case 1:
+                point.y = value;
+                break;
+            default:
+                point.z = value;
+                break;
+            }
+        } else {
+            index -= coordinate_count;
+            if (index < candidate.weights.size()) {
+                candidate.weights[index] = value;
+            } else {
+                index -= candidate.weights.size();
+                candidate.knots[index] = value;
+            }
+        }
+
+        try {
+            set_definition(std::move(candidate));
+        } catch (const std::invalid_argument&) {
+            return false;
+        } catch (const std::domain_error&) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * @brief Get one control point by index.
      * @param index Zero-based control-point index.
      * @return Constant reference to the selected control point.

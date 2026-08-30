@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.2.2 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.3.0 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -39,7 +39,9 @@ and heterogeneous reading APIs.
   `spline2_definition` and `spline3_definition` values group every editable
   field, and the exact `nurbs_defined_spline2` and `nurbs_defined_spline3`
   aliases provide definition-centric spellings. The 2D spline provides the
-  corresponding curve operations and general definition editing.
+  corresponding curve operations and general definition editing. Both
+  dimensions also provide a named scalar view for optimizer-style single-value
+  updates, with deterministic ordering for the current definition.
 - Global B-spline interpolation through 3D samples at caller-supplied
   arc-length parameter stations.
 - `sphere3<REAL>` parameterized by longitude `u` and latitude `v`.
@@ -316,8 +318,72 @@ auto defined_owner = nurbspath::make_nurbs_defined_spline3(initial, 2);
 Equivalent constructors, snapshots, setters, aliases, and creator overloads
 are available for 2D definitions.
 
-For smaller edits, both `nurbs_spline2` and `nurbs_spline3` provide indexed
-`control_point`, `weight`, and `knot` getters with matching
+As an alternative to editing a detached definition, both spline dimensions
+expose selected numeric definition data through `number_of_parameters()`,
+`get_parameter(n)`, `parameter_name(n)`, and `set_parameter(n, value)`. These
+are definition parameters, not values of the native curve coordinate `s`.
+Let `D` be the dimension (`2` or `3`), `C` the control-point count, and `M` the
+knot count. Because every valid spline has one weight per control point, the
+flattened zero-based order is:
+
+| Flattened index | Name | Value |
+|---|---|---|
+| `D * i + c` | `P[i].x`, `P[i].y`, or `P[i].z` | Coordinate `c` of control point `i`, with `c` ordered x, y, then z in 3D |
+| `D * C + i` | `W[i]` | Weight `i` |
+| `(D + 1) * C + j` | `K[j]` | Knot `j` |
+
+Thus `number_of_parameters()` returns `(D + 1) * C + M`. Coordinates are
+point-major: a 3D spline begins `P[0].x`, `P[0].y`, `P[0].z`, `P[1].x`, while
+a 2D spline omits each z coordinate. All names and bracketed vector indices
+are zero-based. Degree, `closed`, and tolerance are deliberately absent and
+remain fixed during every `set_parameter` call. Degree remains immutable;
+closure and tolerance are changed through `set_closed`, `set_tolerance`, or a
+complete definition update. Derived endpoints are also absent. If a bulk
+definition change alters `C` or `M`, callers must query the count and names
+again because the later flattened indices move.
+
+For the 3D `editable` spline above, which has three control points and six
+knots:
+
+```cpp
+const std::size_t count = editable.number_of_parameters(); // 18
+const auto name = editable.parameter_name(3);              // "P[1].x"
+const double old_x = editable.get_parameter(3);            // 1.0
+
+const bool changed = editable.set_parameter(3, 1.25);      // true
+const std::size_t middle_weight =
+    3 * editable.control_points().size() + 1;
+const bool invalid =
+    editable.set_parameter(middle_weight, -1.0);            // false
+```
+
+`get_parameter` and `parameter_name` throw `std::out_of_range` for an index
+outside the current count. Name construction can also propagate
+`std::bad_alloc`. `set_parameter` instead returns false for an out-of-range
+index or when immediate full-definition validation rejects the candidate,
+including non-finite coordinates or knots, nonpositive weights, invalid knot
+ordering or active domains, near-zero homogeneous endpoint weights, and broken
+closed seams. False leaves the definition, active domain, and cached endpoints
+unchanged. A valid value equal to the current value still returns true because
+the candidate was successfully validated and committed.
+Allocation failures such as `std::bad_alloc` propagate rather than being
+reported as validation failure, while preserving the original spline.
+
+Each `set_parameter` call clones the complete definition, changes one scalar,
+validates the whole candidate, and refreshes cached endpoints before commit.
+This makes repeated scalar editing convenient for generic optimization and
+fitting code, but slower than applying many related changes in one detached or
+bulk definition update. It also provides no temporarily invalid staging:
+closed-seam endpoint changes, knot rescaling, and other correlated edits should
+use `set_definition`. A successful scalar update has the same reference,
+pointer, and iterator invalidation rules as the other definition setters.
+Because `nurbs_defined_spline2` and `nurbs_defined_spline3` are exact aliases,
+the scalar members are visible through those spellings too; the ordinary and
+definition-centric names describe editing workflows, not distinct runtime
+interfaces.
+
+For smaller, type-specific edits, both `nurbs_spline2` and `nurbs_spline3`
+provide indexed `control_point`, `weight`, and `knot` getters with matching
 `set_control_point`, `set_weight`, and `set_knot` operations. Whole-vector
 `set_control_points`, `set_weights`, and `set_knots` operations support
 coordinated edits without exposing mutable live storage:
@@ -790,7 +856,10 @@ positions and derivatives remaining two-dimensional. The `project` overloads
 are the explicit bridge from 2D entities to a selected `plane3` embedding and
 preserve spline closure. `spline2_definition`, `definition()`, and both
 `set_definition` forms follow the same detached and transactional rules as
-their 3D counterparts.
+their 3D counterparts. Its scalar definition view is exposed through
+`number_of_parameters`, `get_parameter`, `parameter_name`, and
+`set_parameter`, using point-major x/y coordinates followed by weights and
+knots; degree, closure, and tolerance are excluded.
 
 `vector3<REAL>` is an aggregate with public `x`, `y`, and `z` components that
 default to zero. It also provides indexed access, exact equality, unary signs,
@@ -834,6 +903,10 @@ cached, read-only endpoint values. Endpoints have no direct setters and are
 targeted by editing the control-point definition. Indexed and bulk checked
 setters change every definition field except degree, and `set_definition`
 performs coordinated whole-definition changes while retaining that degree.
+The named scalar view provided by `number_of_parameters`, `get_parameter`,
+`parameter_name`, and `set_parameter` flattens point-major x/y/z coordinates,
+weights, and knots for validated single-value updates; it excludes degree,
+closure, and tolerance.
 `set_standard_knots(end)` and `set_standard_knots(start, end)` replace the knot
 vector with a validated open-clamped uniform definition on the requested native
 parameter domain.
@@ -895,7 +968,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.2.2+v0.2.2`; its commit hash is `unavailable` because a file cannot embed
+`0.3.0+v0.3.0`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated
