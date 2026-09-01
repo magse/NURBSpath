@@ -54,16 +54,16 @@ bool throws_exception(FUNCTION&& function) {
 template <typename SPLINE>
 struct spline_snapshot {
     using control_vector = std::remove_cvref_t<
-        decltype(std::declval<const SPLINE&>().control_points())>;
+        decltype(std::declval<const SPLINE&>().get_control_points())>;
     using point_type = typename control_vector::value_type;
     using weight_vector = std::remove_cvref_t<
-        decltype(std::declval<const SPLINE&>().weights())>;
+        decltype(std::declval<const SPLINE&>().get_weights())>;
     using real_type = typename weight_vector::value_type;
 
     explicit spline_snapshot(const SPLINE& spline)
-        : control_points(spline.control_points()),
-          weights(spline.weights()),
-          knots(spline.knots()),
+        : control_points(spline.get_control_points()),
+          weights(spline.get_weights()),
+          knots(spline.get_knots()),
           degree(spline.degree()),
           tolerance(spline.tolerance()),
           closed(spline.is_closed()),
@@ -73,8 +73,9 @@ struct spline_snapshot {
           sample(spline.evaluate(sample_s)) {}
 
     [[nodiscard]] bool matches(const SPLINE& spline) const {
-        return spline.control_points() == control_points &&
-               spline.weights() == weights && spline.knots() == knots &&
+        return spline.get_control_points() == control_points &&
+               spline.get_weights() == weights &&
+               spline.get_knots() == knots &&
                spline.degree() == degree && spline.tolerance() == tolerance &&
                spline.is_closed() == closed && spline.get_start() == start &&
                spline.get_end() == end && spline.evaluate(sample_s) == sample;
@@ -101,14 +102,14 @@ void test_spline2_mutation() {
     const std::vector<real> knots{0.0, 0.0, 0.0, 1.0, 1.0, 1.0};
 
     nurbs_spline2<real> control_curve(controls, weights, knots, 2);
-    check_point2(control_curve.control_point(1), controls[1], 0.0,
+    check_point2(control_curve.get_control_point(1), controls[1], 0.0,
                  "2D indexed control-point getter");
-    check_near(control_curve.weight(1), 1.0, 0.0,
+    check_near(control_curve.get_weight(1), 1.0, 0.0,
                "2D indexed weight getter");
-    check_near(control_curve.knot(3), 1.0, 0.0,
+    check_near(control_curve.get_knot(3), 1.0, 0.0,
                "2D indexed knot getter");
 
-    point2<real> changed_inner = control_curve.control_point(1);
+    point2<real> changed_inner = control_curve.get_control_point(1);
     changed_inner.y = 4.0;
     control_curve.set_control_point(1, changed_inner);
     check_point2(control_curve.evaluate(0.5), {1.0, 2.0}, 1e-12,
@@ -159,7 +160,7 @@ void test_spline2_mutation() {
     nurbs_spline2<real> knot_cache_curve(
         cache_controls, cache_weights, cache_knots, 2);
     knot_cache_curve.set_knot(1, 0.0);
-    check_near(knot_cache_curve.knot(1), 0.0, 0.0,
+    check_near(knot_cache_curve.get_knot(1), 0.0, 0.0,
                "2D indexed knot setter updates selected knot");
     check_point2(knot_cache_curve.get_start(), {4.0 / 3.0, 0.0}, 1e-12,
                  "2D endpoint-affecting knot refreshes cached start");
@@ -179,9 +180,9 @@ void test_spline2_mutation() {
         replacement_knots,
         false,
         1e-9);
-    check(redefined.control_points() == replacement_controls &&
-              redefined.weights() == replacement_weights &&
-              redefined.knots() == replacement_knots,
+    check(redefined.get_control_points() == replacement_controls &&
+              redefined.get_weights() == replacement_weights &&
+              redefined.get_knots() == replacement_knots,
           "2D atomic definition replacement changes coupled vectors");
     check(redefined.degree() == 2,
           "2D atomic definition replacement retains degree");
@@ -203,7 +204,7 @@ void test_spline2_mutation() {
               closed_curve.set_control_point(0, {0.25, 0.0});
           }) && closed_before.matches(closed_curve),
           "2D seam-breaking point mutation rolls back completely");
-    auto moved_closed_controls = closed_curve.control_points();
+    auto moved_closed_controls = closed_curve.get_control_points();
     moved_closed_controls.front() = {2.0, 2.0};
     moved_closed_controls.back() = {2.0, 2.0};
     closed_curve.set_control_points(moved_closed_controls);
@@ -221,7 +222,7 @@ void test_spline2_mutation() {
           }) && broken_open.matches(closed_curve),
           "2D invalid closure request rolls back completely");
     closed_curve.set_control_point(
-        0, closed_curve.control_points().back());
+        0, closed_curve.get_control_points().back());
     closed_curve.set_closed(true);
     check(closed_curve.is_closed(),
           "2D closure can be restored after repairing the seam");
@@ -250,17 +251,17 @@ void test_spline2_mutation() {
     };
     unchanged_after(
         throws_exception<std::out_of_range>([&invalid_curve] {
-            static_cast<void>(invalid_curve.control_point(99));
+            static_cast<void>(invalid_curve.get_control_point(99));
         }),
         "2D out-of-range control getter leaves definition unchanged");
     unchanged_after(
         throws_exception<std::out_of_range>([&invalid_curve] {
-            static_cast<void>(invalid_curve.weight(99));
+            static_cast<void>(invalid_curve.get_weight(99));
         }),
         "2D out-of-range weight getter leaves definition unchanged");
     unchanged_after(
         throws_exception<std::out_of_range>([&invalid_curve] {
-            static_cast<void>(invalid_curve.knot(99));
+            static_cast<void>(invalid_curve.get_knot(99));
         }),
         "2D out-of-range knot getter leaves definition unchanged");
     unchanged_after(
@@ -313,14 +314,14 @@ void test_spline2_mutation() {
             invalid_curve.set_tolerance(0.0);
         }),
         "2D invalid tolerance mutation rolls back");
-    auto invalid_weights = invalid_curve.weights();
+    auto invalid_weights = invalid_curve.get_weights();
     invalid_weights[1] = 0.0;
     unchanged_after(
         throws_exception<std::invalid_argument>([&] {
             invalid_curve.set_definition(
-                invalid_curve.control_points(),
+                invalid_curve.get_control_points(),
                 invalid_weights,
-                invalid_curve.knots(),
+                invalid_curve.get_knots(),
                 false,
                 invalid_curve.tolerance());
         }),
@@ -336,14 +337,14 @@ void test_spline3_mutation() {
     const std::vector<real> knots{0.0, 0.0, 0.0, 1.0, 1.0, 1.0};
 
     nurbs_spline3<real> control_curve(controls, weights, knots, 2);
-    check_point(control_curve.control_point(1), controls[1], 0.0,
+    check_point(control_curve.get_control_point(1), controls[1], 0.0,
                 "3D indexed control-point getter");
-    check_near(control_curve.weight(1), 1.0, 0.0,
+    check_near(control_curve.get_weight(1), 1.0, 0.0,
                "3D indexed weight getter");
-    check_near(control_curve.knot(3), 1.0, 0.0,
+    check_near(control_curve.get_knot(3), 1.0, 0.0,
                "3D indexed knot getter");
 
-    point3<real> changed_inner = control_curve.control_point(1);
+    point3<real> changed_inner = control_curve.get_control_point(1);
     changed_inner.z = 5.0;
     control_curve.set_control_point(1, changed_inner);
     check_point(control_curve.evaluate(0.5), {1.0, 1.0, 2.5}, 1e-12,
@@ -354,7 +355,7 @@ void test_spline3_mutation() {
     check_point(control_curve.get_start(),
                 control_curve.evaluate(control_curve.s_min()), 0.0,
                 "3D cached start matches evaluation after control mutation");
-    auto endpoint_controls = control_curve.control_points();
+    auto endpoint_controls = control_curve.get_control_points();
     endpoint_controls.front() = {-2.0, 1.0, 0.5};
     endpoint_controls.back() = {3.0, -1.0, 0.25};
     control_curve.set_control_points(endpoint_controls);
@@ -391,7 +392,7 @@ void test_spline3_mutation() {
 
     nurbs_spline3<real> standard_curve(controls, weights, knots, 2);
     standard_curve.set_standard_knots(4.0);
-    check(standard_curve.knots() ==
+    check(standard_curve.get_knots() ==
               std::vector<real>{0.0, 0.0, 0.0, 4.0, 4.0, 4.0},
           "3D one-argument standard knots use zero and the requested end");
     check(standard_curve.degree() == 2,
@@ -411,7 +412,7 @@ void test_spline3_mutation() {
                 "3D standard knots refresh cached end");
 
     standard_curve.set_standard_knots(-2.0, 6.0);
-    check(standard_curve.knots() ==
+    check(standard_curve.get_knots() ==
               std::vector<real>{-2.0, -2.0, -2.0, 6.0, 6.0, 6.0},
           "3D two-argument standard knots use the requested domain");
     check_near(standard_curve.s_min(), -2.0, 0.0,
@@ -434,17 +435,17 @@ void test_spline3_mutation() {
         {0.0, 0.0, 0.0, 0.25, 0.75, 1.0, 1.0, 1.0},
         2);
     multi_span_standard.set_standard_knots(-3.0, 3.0);
-    check(multi_span_standard.knots().size() == 8 &&
-              multi_span_standard.knot(0) == -3.0 &&
-              multi_span_standard.knot(1) == -3.0 &&
-              multi_span_standard.knot(2) == -3.0 &&
-              multi_span_standard.knot(5) == 3.0 &&
-              multi_span_standard.knot(6) == 3.0 &&
-              multi_span_standard.knot(7) == 3.0,
+    check(multi_span_standard.get_knots().size() == 8 &&
+              multi_span_standard.get_knot(0) == -3.0 &&
+              multi_span_standard.get_knot(1) == -3.0 &&
+              multi_span_standard.get_knot(2) == -3.0 &&
+              multi_span_standard.get_knot(5) == 3.0 &&
+              multi_span_standard.get_knot(6) == 3.0 &&
+              multi_span_standard.get_knot(7) == 3.0,
           "3D multi-span standard knots clamp both endpoint blocks");
-    check_near(multi_span_standard.knot(3), -1.0, 1e-12,
+    check_near(multi_span_standard.get_knot(3), -1.0, 1e-12,
                "3D first standard interior knot is uniformly spaced");
-    check_near(multi_span_standard.knot(4), 1.0, 1e-12,
+    check_near(multi_span_standard.get_knot(4), 1.0, 1e-12,
                "3D second standard interior knot is uniformly spaced");
     check_near(multi_span_standard.s_min(), -3.0, 0.0,
                "3D multi-span standard knots use the requested start");
@@ -490,7 +491,7 @@ void test_spline3_mutation() {
     nurbs_spline3<real> knot_cache_curve(
         cache_controls, cache_weights, cache_knots, 2);
     knot_cache_curve.set_knot(1, 0.0);
-    check_near(knot_cache_curve.knot(1), 0.0, 0.0,
+    check_near(knot_cache_curve.get_knot(1), 0.0, 0.0,
                "3D indexed knot setter updates selected knot");
     check_point(knot_cache_curve.get_start(),
                 {4.0 / 3.0, 0.0, 4.0 / 3.0}, 1e-12,
@@ -514,9 +515,9 @@ void test_spline3_mutation() {
         replacement_knots,
         false,
         1e-9);
-    check(redefined.control_points() == replacement_controls &&
-              redefined.weights() == replacement_weights &&
-              redefined.knots() == replacement_knots,
+    check(redefined.get_control_points() == replacement_controls &&
+              redefined.get_weights() == replacement_weights &&
+              redefined.get_knots() == replacement_knots,
           "3D atomic definition replacement changes coupled vectors");
     check(redefined.degree() == 2,
           "3D atomic definition replacement retains degree");
@@ -541,7 +542,7 @@ void test_spline3_mutation() {
               closed_curve.set_control_point(0, {0.25, 0.0, 0.0});
           }) && closed_before.matches(closed_curve),
           "3D seam-breaking point mutation rolls back completely");
-    auto moved_closed_controls = closed_curve.control_points();
+    auto moved_closed_controls = closed_curve.get_control_points();
     moved_closed_controls.front() = {2.0, 2.0, 2.0};
     moved_closed_controls.back() = {2.0, 2.0, 2.0};
     closed_curve.set_control_points(moved_closed_controls);
@@ -559,7 +560,7 @@ void test_spline3_mutation() {
           }) && broken_open.matches(closed_curve),
           "3D invalid closure request rolls back completely");
     closed_curve.set_control_point(
-        0, closed_curve.control_points().back());
+        0, closed_curve.get_control_points().back());
     closed_curve.set_closed(true);
     check(closed_curve.is_closed(),
           "3D closure can be restored after repairing the seam");
@@ -588,17 +589,17 @@ void test_spline3_mutation() {
     };
     unchanged_after(
         throws_exception<std::out_of_range>([&invalid_curve] {
-            static_cast<void>(invalid_curve.control_point(99));
+            static_cast<void>(invalid_curve.get_control_point(99));
         }),
         "3D out-of-range control getter leaves definition unchanged");
     unchanged_after(
         throws_exception<std::out_of_range>([&invalid_curve] {
-            static_cast<void>(invalid_curve.weight(99));
+            static_cast<void>(invalid_curve.get_weight(99));
         }),
         "3D out-of-range weight getter leaves definition unchanged");
     unchanged_after(
         throws_exception<std::out_of_range>([&invalid_curve] {
-            static_cast<void>(invalid_curve.knot(99));
+            static_cast<void>(invalid_curve.get_knot(99));
         }),
         "3D out-of-range knot getter leaves definition unchanged");
     unchanged_after(
@@ -696,14 +697,14 @@ void test_spline3_mutation() {
             invalid_curve.set_tolerance(0.0);
         }),
         "3D invalid tolerance mutation rolls back");
-    auto invalid_weights = invalid_curve.weights();
+    auto invalid_weights = invalid_curve.get_weights();
     invalid_weights[1] = 0.0;
     unchanged_after(
         throws_exception<std::invalid_argument>([&] {
             invalid_curve.set_definition(
-                invalid_curve.control_points(),
+                invalid_curve.get_control_points(),
                 invalid_weights,
-                invalid_curve.knots(),
+                invalid_curve.get_knots(),
                 false,
                 invalid_curve.tolerance());
         }),

@@ -44,8 +44,9 @@ SVGs into the repository root.
   `nurbspath::detail`; private class members may remain private implementation.
 - Keep geometry allocation helpers in `include/nurbspath/creators.hpp`. They
   mirror entity constructors and return `std::shared_ptr`, preserving the
-  constructor's validation and exceptions. Keep the NURBS factory overloads
-  available for both `std::vector` and `std::valarray` definitions.
+  constructor's validation and exceptions. Keep the ordinary NURBS factory
+  overloads available for both `std::vector` and `std::valarray` inputs, and
+  mirror the array-backed spline constructors with corresponding factories.
 - Prefer `[[nodiscard]]`, `const`, `constexpr`, and `noexcept` where their
   contracts are accurate. Do not add `noexcept` to code that can validate and
   throw.
@@ -126,13 +127,26 @@ functions. First, second, and third rational derivatives use homogeneous
 numerator/weight derivatives and the quotient rule. Do not replace these
 analytic derivatives with finite differences.
 
-Keep spline definition storage private. Definition setters must retain the
-current degree, validate a complete candidate before committing it, and refresh
-cached endpoints and any other derived state. Failed updates leave the spline
-unchanged; use bulk setters for correlated changes such as closed seams or knot
-rescaling. Keep cached endpoints readable through member getters but derived
-and read-only; do not add direct endpoint setters. Target endpoint changes by
-editing the control-point definition.
+Keep the definition storage of `nurbs_spline2` and `nurbs_spline3` private.
+Their definition setters must retain the current degree, validate a complete
+candidate before committing it, and refresh cached endpoints and any other
+derived state. Failed updates leave the spline unchanged; use bulk setters for
+correlated changes such as closed seams or knot rescaling. Keep cached
+endpoints readable through member getters but derived and read-only; do not add
+direct endpoint setters. Target endpoint changes by editing the control-point
+definition.
+
+`nurbs_arr_spline2` and `nurbs_arr_spline3` are distinct, non-derived
+alternatives whose flattened scalar `std::valarray<REAL>` storage is public so
+callers can copy or replace it directly. Because direct edits bypass checked
+setters, never keep endpoint or other derived caches that can become stale.
+Validate the current array shape and values before geometry operations or
+conversion, and reject malformed storage without indexing out of bounds.
+Reconstruct `point2` and `point3` values from their scalar coordinates; do not
+reinterpret or alias scalar array elements as point objects. Conversions to and
+from the corresponding ordinary spline stay within the same 2D or 3D world and
+preserve control points, weights, knots, degree, tolerance, closure state, and
+the native `s` domain.
 
 `interpolate` and `adopt_to_points` perform global interpolation through the
 provided samples. The supplied strictly increasing arc-length stations remain

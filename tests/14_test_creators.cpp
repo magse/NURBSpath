@@ -6,9 +6,24 @@
 #include <stdexcept>
 #include <type_traits>
 #include <valarray>
+#include <vector>
 
 int main() {
     using namespace test_support;
+
+    const auto same_parameters = [](
+        const std::valarray<real>& first,
+        const std::valarray<real>& second) {
+        if (first.size() != second.size()) {
+            return false;
+        }
+        for (std::size_t index = 0; index < first.size(); ++index) {
+            if (first[index] != second[index]) {
+                return false;
+            }
+        }
+        return true;
+    };
 
     auto vector_2d = nurbspath::make_vector2(3.0, 4.0);
     auto point_2d = nurbspath::make_point2(1.0, -2.0);
@@ -52,6 +67,49 @@ int main() {
         closed_valarray_knots_2d,
         1,
         true);
+    const std::valarray<real> flat_open_parameters_2d{
+        0.0, 0.0, 2.0, 1.0,
+        1.0, 1.0,
+        4.0, 4.0, 8.0, 8.0};
+    const std::valarray<real> flat_closed_parameters_2d{
+        0.0, 0.0,
+        1.0, 0.0,
+        0.0, 1.0,
+        0.0, 0.0,
+        1.0, 1.0, 1.0, 1.0,
+        0.0, 0.0, 1.0, 2.0, 3.0, 3.0};
+    auto arr_flat_open_2d = nurbspath::make_nurbs_arr_spline2<real>(
+        flat_open_parameters_2d, 1, 1e-8);
+    constexpr float converted_flat_tolerance_2d = 2e-6F;
+    auto arr_flat_converted_tolerance_2d =
+        nurbspath::make_nurbs_arr_spline2<real>(
+            flat_open_parameters_2d, 1, converted_flat_tolerance_2d);
+    auto arr_flat_closed_2d = nurbspath::make_nurbs_arr_spline2<real>(
+        flat_closed_parameters_2d, 1, true, 2e-8);
+    auto arr_vectors_open_2d = nurbspath::make_nurbs_arr_spline2<real>(
+        std::vector<point2<real>>{{0.0, 0.0}, {2.0, 1.0}},
+        std::vector<real>{1.0, 1.0},
+        std::vector<real>{4.0, 4.0, 8.0, 8.0},
+        1,
+        3e-8);
+    constexpr long double converted_vector_tolerance_2d = 4e-6L;
+    auto arr_vectors_converted_tolerance_2d =
+        nurbspath::make_nurbs_arr_spline2<real>(
+            std::vector<point2<real>>{{0.0, 0.0}, {2.0, 1.0}},
+            std::vector<real>{1.0, 1.0},
+            std::vector<real>{4.0, 4.0, 8.0, 8.0},
+            1,
+            converted_vector_tolerance_2d);
+    auto arr_vectors_closed_2d = nurbspath::make_nurbs_arr_spline2<real>(
+        std::vector<point2<real>>{
+            {0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}, {0.0, 0.0}},
+        std::vector<real>{1.0, 1.0, 1.0, 1.0},
+        std::vector<real>{0.0, 0.0, 1.0, 2.0, 3.0, 3.0},
+        1,
+        true,
+        4e-8);
+    auto arr_ordinary_copy_2d =
+        nurbspath::make_nurbs_arr_spline2(*closed_spline_2d);
 
     static_assert(std::is_same_v<
         decltype(vector_2d), std::shared_ptr<vector2<real>>>);
@@ -72,6 +130,21 @@ int main() {
     static_assert(std::is_same_v<
         decltype(closed_valarray_spline_2d),
         std::shared_ptr<nurbs_spline2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_flat_open_2d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_flat_closed_2d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_vectors_open_2d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_vectors_closed_2d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_ordinary_copy_2d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline2<real>>>);
     check(vector_2d->x == 3.0 && vector_2d->y == 4.0,
           "make_vector2 public components");
     check_near(vector_2d->length(), 5.0, 1e-12, "make_vector2 value");
@@ -95,6 +168,48 @@ int main() {
           "make_nurbs_spline2 forwards closure");
     check(closed_valarray_spline_2d->is_closed(),
           "2D valarray factory forwards closure");
+    check(same_parameters(
+              arr_flat_open_2d->parameters, flat_open_parameters_2d) &&
+              arr_flat_open_2d->degree() == 1 &&
+              !arr_flat_open_2d->is_closed() &&
+              arr_flat_open_2d->tolerance() == 1e-8,
+          "2D flat open array factory preserves layout and metadata");
+    check(!arr_flat_converted_tolerance_2d->is_closed() &&
+              arr_flat_converted_tolerance_2d->tolerance() ==
+                  static_cast<real>(converted_flat_tolerance_2d),
+          "2D flat array factory treats a convertible number as tolerance");
+    check(same_parameters(
+              arr_flat_closed_2d->parameters, flat_closed_parameters_2d) &&
+              arr_flat_closed_2d->is_closed() &&
+              arr_flat_closed_2d->tolerance() == 2e-8,
+          "2D flat closed array factory preserves layout and closure");
+    check(same_parameters(
+              arr_vectors_open_2d->parameters, flat_open_parameters_2d) &&
+              !arr_vectors_open_2d->is_closed() &&
+              arr_vectors_open_2d->tolerance() == 3e-8,
+          "2D vector open array factory flattens in documented order");
+    check(!arr_vectors_converted_tolerance_2d->is_closed() &&
+              arr_vectors_converted_tolerance_2d->tolerance() ==
+                  static_cast<real>(converted_vector_tolerance_2d),
+          "2D vector array factory does not confuse tolerance with closure");
+    check(same_parameters(
+              arr_vectors_closed_2d->parameters,
+              flat_closed_parameters_2d) &&
+              arr_vectors_closed_2d->is_closed() &&
+              arr_vectors_closed_2d->tolerance() == 4e-8,
+          "2D vector closed array factory forwards complete state");
+    check(same_parameters(
+              arr_ordinary_copy_2d->parameters,
+              flat_closed_parameters_2d) &&
+              arr_ordinary_copy_2d->degree() == closed_spline_2d->degree() &&
+              arr_ordinary_copy_2d->is_closed() ==
+                  closed_spline_2d->is_closed() &&
+              arr_ordinary_copy_2d->tolerance() ==
+                  closed_spline_2d->tolerance(),
+          "2D ordinary-copy array factory preserves layout and all metadata");
+    arr_ordinary_copy_2d->parameters[0] = 9.0;
+    check(closed_spline_2d->get_control_point(0).x == 0.0,
+          "2D ordinary-copy array factory creates independent storage");
 
     auto vector_3d = nurbspath::make_vector3(1.0, 2.0, 2.0);
     auto point_3d = nurbspath::make_point3(2.0, -1.0, 3.0);
@@ -159,6 +274,54 @@ int main() {
         closed_valarray_knots_3d,
         1,
         true);
+    const std::valarray<real> flat_open_parameters_3d{
+        0.0, 0.0, 0.0,
+        2.0, 4.0, 6.0,
+        1.0, 1.0,
+        2.0, 2.0, 6.0, 6.0};
+    const std::valarray<real> flat_closed_parameters_3d{
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0,
+        1.0, 1.0, 1.0, 1.0,
+        0.0, 0.0, 1.0, 2.0, 3.0, 3.0};
+    auto arr_flat_open_3d = nurbspath::make_nurbs_arr_spline3<real>(
+        flat_open_parameters_3d, 1, 1e-8);
+    constexpr float converted_flat_tolerance_3d = 2e-6F;
+    auto arr_flat_converted_tolerance_3d =
+        nurbspath::make_nurbs_arr_spline3<real>(
+            flat_open_parameters_3d, 1, converted_flat_tolerance_3d);
+    auto arr_flat_closed_3d = nurbspath::make_nurbs_arr_spline3<real>(
+        flat_closed_parameters_3d, 1, true, 2e-8);
+    auto arr_vectors_open_3d = nurbspath::make_nurbs_arr_spline3<real>(
+        std::vector<point3<real>>{{0.0, 0.0, 0.0}, {2.0, 4.0, 6.0}},
+        std::vector<real>{1.0, 1.0},
+        std::vector<real>{2.0, 2.0, 6.0, 6.0},
+        1,
+        3e-8);
+    constexpr long double converted_vector_tolerance_3d = 4e-6L;
+    auto arr_vectors_converted_tolerance_3d =
+        nurbspath::make_nurbs_arr_spline3<real>(
+            std::vector<point3<real>>{
+                {0.0, 0.0, 0.0}, {2.0, 4.0, 6.0}},
+            std::vector<real>{1.0, 1.0},
+            std::vector<real>{2.0, 2.0, 6.0, 6.0},
+            1,
+            converted_vector_tolerance_3d);
+    auto arr_vectors_closed_3d = nurbspath::make_nurbs_arr_spline3<real>(
+        std::vector<point3<real>>{
+            {0.0, 0.0, 0.0},
+            {1.0, 0.0, 0.0},
+            {0.0, 1.0, 0.0},
+            {0.0, 0.0, 0.0}},
+        std::vector<real>{1.0, 1.0, 1.0, 1.0},
+        std::vector<real>{0.0, 0.0, 1.0, 2.0, 3.0, 3.0},
+        1,
+        true,
+        4e-8);
+    auto arr_ordinary_copy_3d =
+        nurbspath::make_nurbs_arr_spline3(*closed_spline_3d);
 
     static_assert(std::is_same_v<
         decltype(vector_3d), std::shared_ptr<vector3<real>>>);
@@ -189,6 +352,21 @@ int main() {
     static_assert(std::is_same_v<
         decltype(closed_valarray_spline_3d),
         std::shared_ptr<nurbs_spline3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_flat_open_3d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_flat_closed_3d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_vectors_open_3d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_vectors_closed_3d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(arr_ordinary_copy_3d),
+        std::shared_ptr<nurbspath::nurbs_arr_spline3<real>>>);
     check(vector_3d->x == 1.0 && vector_3d->y == 2.0 && vector_3d->z == 2.0,
           "make_vector3 public components");
     check_near(vector_3d->length(), 3.0, 1e-12, "make_vector3 value");
@@ -246,6 +424,48 @@ int main() {
           "make_nurbs_spline3 forwards closure");
     check(closed_valarray_spline_3d->is_closed(),
           "3D valarray factory forwards closure");
+    check(same_parameters(
+              arr_flat_open_3d->parameters, flat_open_parameters_3d) &&
+              arr_flat_open_3d->degree() == 1 &&
+              !arr_flat_open_3d->is_closed() &&
+              arr_flat_open_3d->tolerance() == 1e-8,
+          "3D flat open array factory preserves layout and metadata");
+    check(!arr_flat_converted_tolerance_3d->is_closed() &&
+              arr_flat_converted_tolerance_3d->tolerance() ==
+                  static_cast<real>(converted_flat_tolerance_3d),
+          "3D flat array factory treats a convertible number as tolerance");
+    check(same_parameters(
+              arr_flat_closed_3d->parameters, flat_closed_parameters_3d) &&
+              arr_flat_closed_3d->is_closed() &&
+              arr_flat_closed_3d->tolerance() == 2e-8,
+          "3D flat closed array factory preserves layout and closure");
+    check(same_parameters(
+              arr_vectors_open_3d->parameters, flat_open_parameters_3d) &&
+              !arr_vectors_open_3d->is_closed() &&
+              arr_vectors_open_3d->tolerance() == 3e-8,
+          "3D vector open array factory flattens in documented order");
+    check(!arr_vectors_converted_tolerance_3d->is_closed() &&
+              arr_vectors_converted_tolerance_3d->tolerance() ==
+                  static_cast<real>(converted_vector_tolerance_3d),
+          "3D vector array factory does not confuse tolerance with closure");
+    check(same_parameters(
+              arr_vectors_closed_3d->parameters,
+              flat_closed_parameters_3d) &&
+              arr_vectors_closed_3d->is_closed() &&
+              arr_vectors_closed_3d->tolerance() == 4e-8,
+          "3D vector closed array factory forwards complete state");
+    check(same_parameters(
+              arr_ordinary_copy_3d->parameters,
+              flat_closed_parameters_3d) &&
+              arr_ordinary_copy_3d->degree() == closed_spline_3d->degree() &&
+              arr_ordinary_copy_3d->is_closed() ==
+                  closed_spline_3d->is_closed() &&
+              arr_ordinary_copy_3d->tolerance() ==
+                  closed_spline_3d->tolerance(),
+          "3D ordinary-copy array factory preserves layout and all metadata");
+    arr_ordinary_copy_3d->parameters[0] = 9.0;
+    check(closed_spline_3d->get_control_point(0).x == 0.0,
+          "3D ordinary-copy array factory creates independent storage");
 
     auto zero_vector_2d = nurbspath::make_vector2<real>();
     auto zero_point_2d = nurbspath::make_point2<real>();
@@ -390,5 +610,19 @@ int main() {
     }
     check(valarray_validation,
           "valarray creators preserve NURBS constructor validation");
+
+    bool arr_factory_validation = false;
+    try {
+        static_cast<void>(nurbspath::make_nurbs_arr_spline3<real>(
+            std::vector<point3<real>>{
+                {0.0, 0.0, 0.0}, {1.0, 2.0, 3.0}},
+            std::vector<real>{1.0, 0.0},
+            std::vector<real>{0.0, 0.0, 1.0, 1.0},
+            1));
+    } catch (const std::invalid_argument&) {
+        arr_factory_validation = true;
+    }
+    check(arr_factory_validation,
+          "array-backed creators preserve constructor validation");
     return finish("14_test_creators");
 }

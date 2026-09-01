@@ -2,6 +2,8 @@
 
 #include "nurbspath/config.hpp"
 #include "nurbspath/circle2.hpp"
+#include "nurbspath/nurbs_arr_spline2.hpp"
+#include "nurbspath/nurbs_arr_spline3.hpp"
 #include "nurbspath/nurbs_spline2.hpp"
 #include "nurbspath/nurbs_spline3.hpp"
 #include "nurbspath/plane3.hpp"
@@ -142,41 +144,6 @@ template <std::floating_point REAL>
 }
 
 /**
- * @brief Allocate a 2D NURBS spline from a detached definition value.
- * @tparam REAL Floating-point scalar type.
- * @param definition Owning control-point, weight, knot, closure, and
- * tolerance definition.
- * @param degree Positive degree below the control-point count.
- * @return Shared smart pointer owning the validated 2D spline.
- * @throws std::invalid_argument When the definition, degree, or closed seam is invalid.
- * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
- */
-template <std::floating_point REAL>
-[[nodiscard]] std::shared_ptr<nurbs_spline2<REAL>> make_nurbs_spline2(
-    spline2_definition<REAL> definition,
-    std::size_t degree) {
-    return std::make_shared<nurbs_spline2<REAL>>(
-        std::move(definition), degree);
-}
-
-/**
- * @brief Allocate the definition-centric 2D spline alias.
- * @tparam REAL Floating-point scalar type.
- * @param definition Owning detached spline definition.
- * @param degree Positive degree below the control-point count.
- * @return Shared smart pointer owning the validated 2D spline.
- * @throws std::invalid_argument When the definition, degree, or closed seam is invalid.
- * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
- */
-template <std::floating_point REAL>
-[[nodiscard]] std::shared_ptr<nurbs_defined_spline2<REAL>>
-make_nurbs_defined_spline2(
-    spline2_definition<REAL> definition,
-    std::size_t degree) {
-    return make_nurbs_spline2<REAL>(std::move(definition), degree);
-}
-
-/**
  * @brief Allocate a complete 2D NURBS definition with shared ownership.
  * @tparam REAL Floating-point scalar type.
  * @param control_points Control points in the 2D world.
@@ -302,6 +269,129 @@ requires
         degree,
         closed,
         tolerance);
+}
+
+/**
+ * @brief Allocate an open array-backed 2D NURBS from flattened scalars.
+ * @tparam REAL Floating-point scalar type.
+ * @param parameters Point coordinates, weights, and knots in flattened order.
+ * @param degree Positive degree below the derived control-point count.
+ * @param tolerance Positive definition and parameter-boundary tolerance.
+ * @return Shared smart pointer owning the new array-backed spline.
+ * @throws std::invalid_argument When the definition is invalid.
+ * @throws std::domain_error When endpoint evaluation has near-zero weight.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline2<REAL>>
+make_nurbs_arr_spline2(
+    std::valarray<REAL> parameters,
+    std::size_t degree,
+    std::type_identity_t<REAL> tolerance =
+        REAL(64) * std::numeric_limits<REAL>::epsilon()) {
+    return std::make_shared<nurbs_arr_spline2<REAL>>(
+        std::move(parameters), degree, tolerance);
+}
+
+/**
+ * @brief Allocate an open or closed array-backed 2D NURBS from scalars.
+ * @tparam REAL Floating-point scalar type.
+ * @tparam CLOSED Exact Boolean closure-flag type.
+ * @param parameters Point coordinates, weights, and knots in flattened order.
+ * @param degree Positive degree below the derived control-point count.
+ * @param closed True when active-domain endpoints must coincide.
+ * @param tolerance Positive definition and parameter-boundary tolerance.
+ * @return Shared smart pointer owning the new array-backed spline.
+ * @throws std::invalid_argument When the definition or seam is invalid.
+ * @throws std::domain_error When endpoint evaluation has near-zero weight.
+ */
+template <std::floating_point REAL, std::same_as<bool> CLOSED>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline2<REAL>>
+make_nurbs_arr_spline2(
+    std::valarray<REAL> parameters,
+    std::size_t degree,
+    CLOSED closed,
+    std::type_identity_t<REAL> tolerance =
+        REAL(64) * std::numeric_limits<REAL>::epsilon()) {
+    return std::make_shared<nurbs_arr_spline2<REAL>>(
+        std::move(parameters), degree, closed, tolerance);
+}
+
+/**
+ * @brief Allocate an open array-backed 2D NURBS from vector collections.
+ * @tparam REAL Floating-point scalar type.
+ * @param control_points Finite 2D control points.
+ * @param weights Finite positive rational weights.
+ * @param knots Complete finite nondecreasing knot vector.
+ * @param degree Positive degree below the control-point count.
+ * @param tolerance Positive definition and parameter-boundary tolerance.
+ * @return Shared smart pointer owning the new array-backed spline.
+ * @throws std::invalid_argument When the definition is invalid.
+ * @throws std::overflow_error When the flattened size is not representable.
+ * @throws std::domain_error When endpoint evaluation has near-zero weight.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline2<REAL>>
+make_nurbs_arr_spline2(
+    std::vector<point2<REAL>> control_points,
+    std::vector<REAL> weights,
+    std::vector<REAL> knots,
+    std::size_t degree,
+    std::type_identity_t<REAL> tolerance =
+        REAL(64) * std::numeric_limits<REAL>::epsilon()) {
+    return std::make_shared<nurbs_arr_spline2<REAL>>(
+        std::move(control_points),
+        std::move(weights),
+        std::move(knots),
+        degree,
+        tolerance);
+}
+
+/**
+ * @brief Allocate an open or closed array-backed 2D NURBS from vectors.
+ * @tparam REAL Floating-point scalar type.
+ * @tparam CLOSED Exact Boolean closure-flag type.
+ * @param control_points Finite 2D control points.
+ * @param weights Finite positive rational weights.
+ * @param knots Complete finite nondecreasing knot vector.
+ * @param degree Positive degree below the control-point count.
+ * @param closed True when active-domain endpoints must coincide.
+ * @param tolerance Positive definition and parameter-boundary tolerance.
+ * @return Shared smart pointer owning the new array-backed spline.
+ * @throws std::invalid_argument When the definition or seam is invalid.
+ * @throws std::overflow_error When the flattened size is not representable.
+ * @throws std::domain_error When endpoint evaluation has near-zero weight.
+ */
+template <std::floating_point REAL, std::same_as<bool> CLOSED>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline2<REAL>>
+make_nurbs_arr_spline2(
+    std::vector<point2<REAL>> control_points,
+    std::vector<REAL> weights,
+    std::vector<REAL> knots,
+    std::size_t degree,
+    CLOSED closed,
+    std::type_identity_t<REAL> tolerance =
+        REAL(64) * std::numeric_limits<REAL>::epsilon()) {
+    return std::make_shared<nurbs_arr_spline2<REAL>>(
+        std::move(control_points),
+        std::move(weights),
+        std::move(knots),
+        degree,
+        closed,
+        tolerance);
+}
+
+/**
+ * @brief Allocate an array-backed copy of an ordinary 2D NURBS spline.
+ * @tparam REAL Floating-point scalar type.
+ * @param spline Ordinary spline whose complete state is copied.
+ * @return Shared smart pointer owning the independent array-backed spline.
+ * @throws std::overflow_error When the flattened size is not representable.
+ * @throws std::bad_alloc When allocation fails.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline2<REAL>>
+make_nurbs_arr_spline2(const nurbs_spline2<REAL>& spline) {
+    return std::make_shared<nurbs_arr_spline2<REAL>>(spline);
 }
 
 /**
@@ -519,41 +609,6 @@ template <std::floating_point REAL>
 }
 
 /**
- * @brief Allocate a 3D NURBS spline from a detached definition value.
- * @tparam REAL Floating-point scalar type.
- * @param definition Owning control-point, weight, knot, closure, and
- * tolerance definition.
- * @param degree Positive degree below the control-point count.
- * @return Shared smart pointer owning the validated 3D spline.
- * @throws std::invalid_argument When the definition, degree, or closed seam is invalid.
- * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
- */
-template <std::floating_point REAL>
-[[nodiscard]] std::shared_ptr<nurbs_spline3<REAL>> make_nurbs_spline3(
-    spline3_definition<REAL> definition,
-    std::size_t degree) {
-    return std::make_shared<nurbs_spline3<REAL>>(
-        std::move(definition), degree);
-}
-
-/**
- * @brief Allocate the definition-centric 3D spline alias.
- * @tparam REAL Floating-point scalar type.
- * @param definition Owning detached spline definition.
- * @param degree Positive degree below the control-point count.
- * @return Shared smart pointer owning the validated 3D spline.
- * @throws std::invalid_argument When the definition, degree, or closed seam is invalid.
- * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
- */
-template <std::floating_point REAL>
-[[nodiscard]] std::shared_ptr<nurbs_defined_spline3<REAL>>
-make_nurbs_defined_spline3(
-    spline3_definition<REAL> definition,
-    std::size_t degree) {
-    return make_nurbs_spline3<REAL>(std::move(definition), degree);
-}
-
-/**
  * @brief Allocate a complete 3D NURBS definition with shared ownership.
  * @tparam REAL Floating-point scalar type.
  * @param control_points World-space control points.
@@ -679,6 +734,129 @@ requires
         degree,
         closed,
         tolerance);
+}
+
+/**
+ * @brief Allocate an open array-backed 3D NURBS from flattened scalars.
+ * @tparam REAL Floating-point scalar type.
+ * @param parameters Point coordinates, weights, and knots in flattened order.
+ * @param degree Positive degree below the derived control-point count.
+ * @param tolerance Positive definition and parameter-boundary tolerance.
+ * @return Shared smart pointer owning the new array-backed spline.
+ * @throws std::invalid_argument When the definition is invalid.
+ * @throws std::domain_error When endpoint evaluation has near-zero weight.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline3<REAL>>
+make_nurbs_arr_spline3(
+    std::valarray<REAL> parameters,
+    std::size_t degree,
+    std::type_identity_t<REAL> tolerance =
+        REAL(64) * std::numeric_limits<REAL>::epsilon()) {
+    return std::make_shared<nurbs_arr_spline3<REAL>>(
+        std::move(parameters), degree, tolerance);
+}
+
+/**
+ * @brief Allocate an open or closed array-backed 3D NURBS from scalars.
+ * @tparam REAL Floating-point scalar type.
+ * @tparam CLOSED Exact Boolean closure-flag type.
+ * @param parameters Point coordinates, weights, and knots in flattened order.
+ * @param degree Positive degree below the derived control-point count.
+ * @param closed True when active-domain endpoints must coincide.
+ * @param tolerance Positive definition and parameter-boundary tolerance.
+ * @return Shared smart pointer owning the new array-backed spline.
+ * @throws std::invalid_argument When the definition or seam is invalid.
+ * @throws std::domain_error When endpoint evaluation has near-zero weight.
+ */
+template <std::floating_point REAL, std::same_as<bool> CLOSED>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline3<REAL>>
+make_nurbs_arr_spline3(
+    std::valarray<REAL> parameters,
+    std::size_t degree,
+    CLOSED closed,
+    std::type_identity_t<REAL> tolerance =
+        REAL(64) * std::numeric_limits<REAL>::epsilon()) {
+    return std::make_shared<nurbs_arr_spline3<REAL>>(
+        std::move(parameters), degree, closed, tolerance);
+}
+
+/**
+ * @brief Allocate an open array-backed 3D NURBS from vector collections.
+ * @tparam REAL Floating-point scalar type.
+ * @param control_points Finite world-space control points.
+ * @param weights Finite positive rational weights.
+ * @param knots Complete finite nondecreasing knot vector.
+ * @param degree Positive degree below the control-point count.
+ * @param tolerance Positive definition and parameter-boundary tolerance.
+ * @return Shared smart pointer owning the new array-backed spline.
+ * @throws std::invalid_argument When the definition is invalid.
+ * @throws std::overflow_error When the flattened size is not representable.
+ * @throws std::domain_error When endpoint evaluation has near-zero weight.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline3<REAL>>
+make_nurbs_arr_spline3(
+    std::vector<point3<REAL>> control_points,
+    std::vector<REAL> weights,
+    std::vector<REAL> knots,
+    std::size_t degree,
+    std::type_identity_t<REAL> tolerance =
+        REAL(64) * std::numeric_limits<REAL>::epsilon()) {
+    return std::make_shared<nurbs_arr_spline3<REAL>>(
+        std::move(control_points),
+        std::move(weights),
+        std::move(knots),
+        degree,
+        tolerance);
+}
+
+/**
+ * @brief Allocate an open or closed array-backed 3D NURBS from vectors.
+ * @tparam REAL Floating-point scalar type.
+ * @tparam CLOSED Exact Boolean closure-flag type.
+ * @param control_points Finite world-space control points.
+ * @param weights Finite positive rational weights.
+ * @param knots Complete finite nondecreasing knot vector.
+ * @param degree Positive degree below the control-point count.
+ * @param closed True when active-domain endpoints must coincide.
+ * @param tolerance Positive definition and parameter-boundary tolerance.
+ * @return Shared smart pointer owning the new array-backed spline.
+ * @throws std::invalid_argument When the definition or seam is invalid.
+ * @throws std::overflow_error When the flattened size is not representable.
+ * @throws std::domain_error When endpoint evaluation has near-zero weight.
+ */
+template <std::floating_point REAL, std::same_as<bool> CLOSED>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline3<REAL>>
+make_nurbs_arr_spline3(
+    std::vector<point3<REAL>> control_points,
+    std::vector<REAL> weights,
+    std::vector<REAL> knots,
+    std::size_t degree,
+    CLOSED closed,
+    std::type_identity_t<REAL> tolerance =
+        REAL(64) * std::numeric_limits<REAL>::epsilon()) {
+    return std::make_shared<nurbs_arr_spline3<REAL>>(
+        std::move(control_points),
+        std::move(weights),
+        std::move(knots),
+        degree,
+        closed,
+        tolerance);
+}
+
+/**
+ * @brief Allocate an array-backed copy of an ordinary 3D NURBS spline.
+ * @tparam REAL Floating-point scalar type.
+ * @param spline Ordinary spline whose complete state is copied.
+ * @return Shared smart pointer owning the independent array-backed spline.
+ * @throws std::overflow_error When the flattened size is not representable.
+ * @throws std::bad_alloc When allocation fails.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<nurbs_arr_spline3<REAL>>
+make_nurbs_arr_spline3(const nurbs_spline3<REAL>& spline) {
+    return std::make_shared<nurbs_arr_spline3<REAL>>(spline);
 }
 
 } // namespace nurbspath

@@ -490,7 +490,7 @@ public:
      * @param spline NURBS spline in the independent 2D world.
      */
     void add(const nurbs_spline2<REAL>& spline) {
-        const auto& control_points = spline.control_points();
+        const auto& control_points = spline.get_control_points();
         for (std::size_t index = 1; index < control_points.size(); ++index) {
             append_world_segment(
                 "nurbspath_canvas_spline2_control_polygon",
@@ -919,7 +919,7 @@ public:
      * @param spline NURBS curve to visualize over its active domain.
      */
     void add(const nurbs_spline3<REAL>& spline) {
-        const auto& control_points = spline.control_points();
+        const auto& control_points = spline.get_control_points();
         for (std::size_t index = 1; index < control_points.size(); ++index) {
             append_world_dashed_segment(
                 "nurbspath_spline_control_polygon",
@@ -1046,7 +1046,7 @@ public:
      */
     void add(const plane3<REAL>& plane, const nurbs_spline2<REAL>& spline) {
         const nurbs_spline3<REAL> projected_spline = project(plane, spline);
-        const auto& control_points = projected_spline.control_points();
+        const auto& control_points = projected_spline.get_control_points();
         for (std::size_t index = 1; index < control_points.size(); ++index) {
             append_world_segment(
                 "nurbspath_spline2_control_polygon",

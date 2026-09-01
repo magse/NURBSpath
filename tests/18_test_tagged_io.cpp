@@ -29,9 +29,9 @@ void check_spline_definition(
     const nurbs_spline3<real>& expected,
     std::string_view message) {
     test_support::check(
-        actual.control_points() == expected.control_points() &&
-            actual.weights() == expected.weights() &&
-            actual.knots() == expected.knots() &&
+        actual.get_control_points() == expected.get_control_points() &&
+            actual.get_weights() == expected.get_weights() &&
+            actual.get_knots() == expected.get_knots() &&
             actual.degree() == expected.degree() &&
             actual.tolerance() == expected.tolerance() &&
             actual.is_closed() == expected.is_closed(),

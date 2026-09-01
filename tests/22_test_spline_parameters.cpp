@@ -61,14 +61,19 @@ bool throws_exception(FUNCTION&& function) {
 
 template <typename SPLINE>
 struct spline_snapshot {
-    using definition_type = std::remove_cvref_t<decltype(
-        std::declval<const SPLINE&>().definition())>;
-    using point_type = typename std::remove_cvref_t<decltype(
-        std::declval<definition_type>().control_points)>::value_type;
+    using point_vector = std::remove_cvref_t<decltype(
+        std::declval<const SPLINE&>().get_control_points())>;
+    using scalar_vector = std::remove_cvref_t<decltype(
+        std::declval<const SPLINE&>().get_weights())>;
+    using point_type = typename point_vector::value_type;
 
     explicit spline_snapshot(const SPLINE& spline)
-        : definition(spline.definition()),
+        : control_points(spline.get_control_points()),
+          weights(spline.get_weights()),
+          knots(spline.get_knots()),
           degree(spline.degree()),
+          tolerance(spline.tolerance()),
+          closed(spline.is_closed()),
           start(spline.get_start()),
           end(spline.get_end()),
           sample_s(spline.s_min() +
@@ -76,18 +81,21 @@ struct spline_snapshot {
           sample(spline.evaluate(sample_s)) {}
 
     [[nodiscard]] bool matches(const SPLINE& spline) const {
-        const definition_type current = spline.definition();
-        return current.control_points == definition.control_points &&
-               current.weights == definition.weights &&
-               current.knots == definition.knots &&
-               current.closed == definition.closed &&
-               current.tolerance == definition.tolerance &&
+        return spline.get_control_points() == control_points &&
+               spline.get_weights() == weights &&
+               spline.get_knots() == knots &&
+               spline.is_closed() == closed &&
+               spline.tolerance() == tolerance &&
                spline.degree() == degree && spline.get_start() == start &&
                spline.get_end() == end && spline.evaluate(sample_s) == sample;
     }
 
-    definition_type definition;
+    point_vector control_points;
+    scalar_vector weights;
+    scalar_vector knots;
     std::size_t degree;
+    real tolerance;
+    bool closed;
     point_type start;
     point_type end;
     real sample_s;
@@ -259,7 +267,7 @@ void test_successful_updates2() {
     spline2 spline = make_open2();
     const point2<real> before_shape = spline.evaluate(0.75);
     check(spline.set_parameter(3, 25.0) &&
-              spline.control_point(1).y == 25.0 &&
+              spline.get_control_point(1).y == 25.0 &&
               spline.evaluate(0.75) != before_shape,
           "2D coordinate parameter changes the evaluated path");
     check(spline.set_parameter(0, 9.0) &&
@@ -268,9 +276,9 @@ void test_successful_updates2() {
     check(spline.set_parameter(7, 49.0) &&
               spline.get_end() == point2<real>{40.0, 49.0},
           "2D last control coordinate refreshes the cached end");
-    check(spline.set_parameter(10, 5.0) && spline.weight(2) == 5.0,
+    check(spline.set_parameter(10, 5.0) && spline.get_weight(2) == 5.0,
           "2D weight parameter commits a valid positive weight");
-    check(spline.set_parameter(15, 1.25) && spline.knot(3) == 1.25,
+    check(spline.set_parameter(15, 1.25) && spline.get_knot(3) == 1.25,
           "2D knot parameter commits a valid ordered knot");
     check(spline.degree() == 2 && !spline.is_closed() &&
               spline.tolerance() == 1e-9 &&
@@ -284,7 +292,7 @@ void test_successful_updates3() {
     spline3 spline = make_open3();
     const point3<real> before_shape = spline.evaluate(0.75);
     check(spline.set_parameter(5, 25.0) &&
-              spline.control_point(1).z == 25.0 &&
+              spline.get_control_point(1).z == 25.0 &&
               spline.evaluate(0.75) != before_shape,
           "3D coordinate parameter changes the evaluated path");
     check(spline.set_parameter(2, 9.0) &&
@@ -293,9 +301,9 @@ void test_successful_updates3() {
     check(spline.set_parameter(9, 49.0) &&
               spline.get_end() == point3<real>{49.0, 41.0, 42.0},
           "3D last control coordinate refreshes the cached end");
-    check(spline.set_parameter(14, 5.0) && spline.weight(2) == 5.0,
+    check(spline.set_parameter(14, 5.0) && spline.get_weight(2) == 5.0,
           "3D weight parameter commits a valid positive weight");
-    check(spline.set_parameter(19, 1.25) && spline.knot(3) == 1.25,
+    check(spline.set_parameter(19, 1.25) && spline.get_knot(3) == 1.25,
           "3D knot parameter commits a valid ordered knot");
     check(spline.degree() == 2 && !spline.is_closed() &&
               spline.tolerance() == 1e-9 &&
@@ -385,9 +393,10 @@ void test_closed_behavior2() {
     expect_rejected(
         spline, 6, 0.25,
         "2D closed spline rejects an isolated final endpoint edit");
-    check(spline.set_parameter(3, 2.5) && spline.control_point(1).y == 2.5,
+    check(spline.set_parameter(3, 2.5) &&
+              spline.get_control_point(1).y == 2.5,
           "2D closed spline accepts a valid interior coordinate edit");
-    check(spline.set_parameter(9, 2.5) && spline.weight(1) == 2.5,
+    check(spline.set_parameter(9, 2.5) && spline.get_weight(1) == 2.5,
           "2D closed spline accepts a valid weight edit");
     check(spline.is_closed() && spline.degree() == 2 &&
               spline.tolerance() == 1e-9 &&
@@ -415,9 +424,10 @@ void test_closed_behavior3() {
     expect_rejected(
         spline, 9, 0.25,
         "3D closed spline rejects an isolated final endpoint edit");
-    check(spline.set_parameter(5, 3.5) && spline.control_point(1).z == 3.5,
+    check(spline.set_parameter(5, 3.5) &&
+              spline.get_control_point(1).z == 3.5,
           "3D closed spline accepts a valid interior coordinate edit");
-    check(spline.set_parameter(13, 2.5) && spline.weight(1) == 2.5,
+    check(spline.set_parameter(13, 2.5) && spline.get_weight(1) == 2.5,
           "3D closed spline accepts a valid weight edit");
     check(spline.is_closed() && spline.degree() == 2 &&
               spline.tolerance() == 1e-9 &&
@@ -429,7 +439,7 @@ void test_dynamic_counts() {
     using namespace test_support;
 
     spline2 spline_2d = make_open2();
-    spline_2d.set_definition({
+    spline_2d.set_definition(
         {{0.0, 0.0},
          {1.0, 2.0},
          {2.0, 3.0},
@@ -438,7 +448,7 @@ void test_dynamic_counts() {
         {1.0, 1.0, 1.0, 1.0, 1.0},
         {0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0},
         false,
-        1e-8});
+        1e-8);
     check(spline_2d.number_of_parameters() == 23 &&
               spline_2d.parameter_name(9) == "P[4].y" &&
               spline_2d.parameter_name(10) == "W[0]" &&
@@ -448,7 +458,7 @@ void test_dynamic_counts() {
           "2D parameter count and group boundaries follow a replaced definition");
 
     spline3 spline_3d = make_open3();
-    spline_3d.set_definition({
+    spline_3d.set_definition(
         {{0.0, 0.0, 0.0},
          {1.0, 2.0, 1.0},
          {2.0, 3.0, 2.0},
@@ -457,7 +467,7 @@ void test_dynamic_counts() {
         {1.0, 1.0, 1.0, 1.0, 1.0},
         {0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0},
         false,
-        1e-8});
+        1e-8);
     check(spline_3d.number_of_parameters() == 28 &&
               spline_3d.parameter_name(14) == "P[4].z" &&
               spline_3d.parameter_name(15) == "W[0]" &&

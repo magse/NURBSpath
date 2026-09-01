@@ -56,9 +56,9 @@ int main() {
         {3.0, 3.0, 3.0, 7.0, 7.0, 7.0},
         2);
     const nurbs_spline3<real> projected_spline = nurbspath::project(plane, spline);
-    check(projected_spline.weights() == spline.weights(),
+    check(projected_spline.get_weights() == spline.get_weights(),
           "spline projection preserves weights");
-    check(projected_spline.knots() == spline.knots(),
+    check(projected_spline.get_knots() == spline.get_knots(),
           "spline projection preserves knots");
     check(projected_spline.degree() == spline.degree(),
           "spline projection preserves degree");
@@ -66,9 +66,12 @@ int main() {
                "spline projection preserves tolerance");
     check(projected_spline.is_closed() == spline.is_closed(),
           "spline projection preserves closure");
-    for (std::size_t index = 0; index < spline.control_points().size(); ++index) {
-        check_point(projected_spline.control_points()[index],
-                    nurbspath::project(plane, spline.control_points()[index]),
+    for (std::size_t index = 0;
+         index < spline.get_control_points().size();
+         ++index) {
+        check_point(projected_spline.get_control_points()[index],
+                    nurbspath::project(
+                        plane, spline.get_control_points()[index]),
                     1e-12, "spline projection maps control points only");
     }
     check_point(projected_spline.evaluate(5.0),

@@ -21,9 +21,9 @@ Every version 1 row has this prefix and one entity-specific payload:
 The canonical writer separates tokens with one ASCII space and terminates each
 row with a newline. The four case-sensitive type tokens are `point3`,
 `vector3`, `sphere3`, and `spline3`. The `spline3` storage token represents the
-C++ type `nurbspath::nurbs_spline3<REAL>`. The definition-centric spelling
-`nurbspath::nurbs_defined_spline3<REAL>` is an exact alias of that type and does
-not introduce another token or record layout.
+C++ type `nurbspath::nurbs_spline3<REAL>`. The distinct array-backed
+`nurbspath::nurbs_arr_spline3<REAL>` type has no additional token or record
+layout; explicitly convert it to an ordinary spline before writing tagged data.
 
 `<tag>` is an unsigned base-10 integer that must fit in `std::size_t` on the
 reading system. Tags are therefore textually portable, but a value produced on
@@ -81,13 +81,13 @@ in order:
    that control point's weight.
 7. `knot_count` knot values.
 
-All five fields of the public detached
-`nurbspath::spline3_definition<REAL>` aggregate map directly to this payload:
-`control_points` and their paired `weights`, `knots`, `closed`, and
-`tolerance`. `control_count` and `knot_count` are derived framing values.
-Degree is deliberately kept separate when a definition is constructed, cloned
-from a spline with `definition()`, or adopted with
-`set_definition(definition)`.
+The payload maps to the ordinary spline's `get_control_points()`,
+`get_weights()`, `get_knots()`, `degree()`, `is_closed()`, and `tolerance()`
+values.
+`control_count` and `knot_count` are derived framing values. The on-disk
+control-point groups interleave each point's coordinates with its weight; this
+layout is independent of the flattened in-memory scalar order used by
+`nurbs_arr_spline3`.
 
 All control coordinates, weights, knots, and the tolerance must be finite.
 Weights must be strictly positive, knots must be nondecreasing, and
@@ -98,12 +98,12 @@ positive and below the control-point count, and a row marked closed must
 evaluate to coincident active-domain endpoints within the spline's closure
 tolerance.
 
-This layout stores the separate degree together with every detached definition
-field. Reading it preserves the control points, paired weights, knot vector,
-degree, closure state, tolerance, and native active `s` domain. Typed and
-heterogeneous reads allocate the canonical `nurbs_spline3<REAL>` spelling;
-because `nurbs_defined_spline3<REAL>` is the same exact type, no conversion or
-information loss is involved.
+This layout stores every ordinary spline field needed to preserve the control
+points, paired weights, knot vector, degree, closure state, tolerance, and
+native active `s` domain. Typed and heterogeneous reads allocate
+`nurbs_spline3<REAL>`. Callers that need array-backed storage can explicitly
+convert the decoded ordinary spline; converting an array-backed spline to the
+ordinary type before writing preserves the same logical fields.
 
 ## Canonical writer output
 
@@ -124,7 +124,7 @@ locale do not affect the row and are not changed by the operation.
 
 `point3`, `vector3`, and `sphere3` reject non-finite data with
 `std::invalid_argument` before writing. A valid `nurbs_spline3` already has
-finite definition fields by construction. Output errors follow the destination
+finite stored fields by construction. Output errors follow the destination
 stream's state and exception mask.
 
 For `REAL = double`, canonical rows can look like this:

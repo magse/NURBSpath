@@ -91,14 +91,14 @@ template <std::floating_point REAL>
     const plane3<REAL>& plane,
     const nurbs_spline2<REAL>& spline) {
     std::vector<point3<REAL>> control_points;
-    control_points.reserve(spline.control_points().size());
-    for (const point2<REAL>& control_point : spline.control_points()) {
+    control_points.reserve(spline.get_control_points().size());
+    for (const point2<REAL>& control_point : spline.get_control_points()) {
         control_points.push_back(project(plane, control_point));
     }
     return nurbs_spline3<REAL>{
         std::move(control_points),
-        spline.weights(),
-        spline.knots(),
+        spline.get_weights(),
+        spline.get_knots(),
         spline.degree(),
         spline.is_closed(),
         spline.tolerance()};

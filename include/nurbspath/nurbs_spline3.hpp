@@ -3,7 +3,6 @@
 #include "nurbspath/config.hpp"
 #include "nurbspath/point3.hpp"
 #include "nurbspath/serialization.hpp"
-#include "nurbspath/spline3_definition.hpp"
 #include "nurbspath/utility.hpp"
 
 #include <algorithm>
@@ -49,30 +48,6 @@ struct spline_derivatives3 {
 template <std::floating_point REAL>
 class nurbs_spline3 {
 public:
-    /**
-     * @brief Construct a 3D NURBS curve from a detached definition value.
-     *
-     * The definition fields are moved from an rvalue or copied from an
-     * lvalue. The degree remains separate from `spline3_definition` and is
-     * validated together with the complete candidate.
-     *
-     * @param definition Owning control-point, weight, knot, closure, and
-     * tolerance definition.
-     * @param degree Positive degree below the control-point count.
-     * @throws std::invalid_argument When the definition, degree, or closed
-     * seam is invalid.
-     * @throws std::domain_error When endpoint evaluation has near-zero
-     * homogeneous weight.
-     */
-    nurbs_spline3(spline3_definition<REAL> definition, std::size_t degree)
-        : nurbs_spline3(
-              std::move(definition.control_points),
-              std::move(definition.weights),
-              std::move(definition.knots),
-              degree,
-              definition.closed,
-              definition.tolerance) {}
-
     /**
      * @brief Construct a NURBS curve from its complete definition.
      * @param control_points World-space control points.
@@ -125,13 +100,18 @@ public:
     }
 
     /** @brief Get all control points. @return Constant control-point vector reference. */
-    [[nodiscard]] const std::vector<point3<REAL>>& control_points() const noexcept {
+    [[nodiscard]] const std::vector<point3<REAL>>&
+    get_control_points() const noexcept {
         return control_points_;
     }
     /** @brief Get all rational weights. @return Constant weight vector reference. */
-    [[nodiscard]] const std::vector<REAL>& weights() const noexcept { return weights_; }
+    [[nodiscard]] const std::vector<REAL>& get_weights() const noexcept {
+        return weights_;
+    }
     /** @brief Get the full knot vector. @return Constant knot vector reference. */
-    [[nodiscard]] const std::vector<REAL>& knots() const noexcept { return knots_; }
+    [[nodiscard]] const std::vector<REAL>& get_knots() const noexcept {
+        return knots_;
+    }
     /** @brief Get the polynomial degree. @return Spline degree. */
     [[nodiscard]] std::size_t degree() const noexcept { return degree_; }
 
@@ -140,26 +120,6 @@ public:
 
     /** @brief Report whether the spline has a closed seam. @return True for closed curves. */
     [[nodiscard]] bool is_closed() const noexcept { return closed_; }
-
-    /**
-     * @brief Clone every editable definition field into a detached value.
-     *
-     * Editing the returned snapshot does not affect this spline until it is
-     * supplied to `set_definition`. The polynomial degree is deliberately not
-     * part of the returned aggregate.
-     *
-     * @return Deep-copy snapshot of control points, weights, knots, closure,
-     * and tolerance.
-     * @throws std::bad_alloc When allocating the copied vectors fails.
-     */
-    [[nodiscard]] spline3_definition<REAL> definition() const {
-        return {
-            .control_points = control_points_,
-            .weights = weights_,
-            .knots = knots_,
-            .closed = closed_,
-            .tolerance = tolerance_};
-    }
 
     /**
      * @brief Get the number of editable scalar parameters.
@@ -264,11 +224,13 @@ public:
             return false;
         }
 
-        spline3_definition<REAL> candidate = definition();
+        std::vector<point3<REAL>> candidate_control_points = control_points_;
+        std::vector<REAL> candidate_weights = weights_;
+        std::vector<REAL> candidate_knots = knots_;
         const std::size_t coordinate_count =
-            candidate.control_points.size() * std::size_t(3);
+            candidate_control_points.size() * std::size_t(3);
         if (index < coordinate_count) {
-            point3<REAL>& point = candidate.control_points[index / 3];
+            point3<REAL>& point = candidate_control_points[index / 3];
             switch (index % 3) {
             case 0:
                 point.x = value;
@@ -282,16 +244,21 @@ public:
             }
         } else {
             index -= coordinate_count;
-            if (index < candidate.weights.size()) {
-                candidate.weights[index] = value;
+            if (index < candidate_weights.size()) {
+                candidate_weights[index] = value;
             } else {
-                index -= candidate.weights.size();
-                candidate.knots[index] = value;
+                index -= candidate_weights.size();
+                candidate_knots[index] = value;
             }
         }
 
         try {
-            set_definition(std::move(candidate));
+            set_definition(
+                std::move(candidate_control_points),
+                std::move(candidate_weights),
+                std::move(candidate_knots),
+                closed_,
+                tolerance_);
         } catch (const std::invalid_argument&) {
             return false;
         } catch (const std::domain_error&) {
@@ -306,7 +273,8 @@ public:
      * @return Constant reference to the selected control point.
      * @throws std::out_of_range When index is outside the control-point vector.
      */
-    [[nodiscard]] const point3<REAL>& control_point(std::size_t index) const {
+    [[nodiscard]] const point3<REAL>& get_control_point(
+        std::size_t index) const {
         return control_points_.at(index);
     }
 
@@ -316,7 +284,7 @@ public:
      * @return Selected rational weight.
      * @throws std::out_of_range When index is outside the weight vector.
      */
-    [[nodiscard]] REAL weight(std::size_t index) const {
+    [[nodiscard]] REAL get_weight(std::size_t index) const {
         return weights_.at(index);
     }
 
@@ -326,7 +294,7 @@ public:
      * @return Selected knot value.
      * @throws std::out_of_range When index is outside the knot vector.
      */
-    [[nodiscard]] REAL knot(std::size_t index) const {
+    [[nodiscard]] REAL get_knot(std::size_t index) const {
         return knots_.at(index);
     }
 
@@ -542,25 +510,6 @@ public:
     }
 
     /**
-     * @brief Atomically adopt a detached definition while retaining degree.
-     *
-     * The complete candidate is validated and cached endpoints are refreshed
-     * before commit. Failure leaves this spline and its degree unchanged.
-     *
-     * @param definition Owning candidate containing every editable field.
-     * @throws std::invalid_argument When the candidate or closed seam is invalid.
-     * @throws std::domain_error When endpoint evaluation has near-zero homogeneous weight.
-     */
-    void set_definition(spline3_definition<REAL> definition) {
-        commit_definition(
-            std::move(definition.control_points),
-            std::move(definition.weights),
-            std::move(definition.knots),
-            definition.closed,
-            definition.tolerance);
-    }
-
-    /**
      * @brief Write one version-1 tagged `spline3` text record.
      *
      * The single row stores the decimal tag, `spline3` and `v1` tokens,
@@ -748,8 +697,8 @@ public:
         }
         REAL length = REAL(0);
         point3<REAL> previous = evaluate(s_min());
-        for (std::size_t index = 1; index <= segment_count; ++index) {
-            const REAL fraction = static_cast<REAL>(index) /
+        for (std::size_t index = 0; index < segment_count; ++index) {
+            const REAL fraction = static_cast<REAL>(index + 1) /
                                   static_cast<REAL>(segment_count);
             const REAL s = s_min() + fraction * (s_max() - s_min());
             const point3<REAL> current = evaluate(s);
@@ -1203,17 +1152,6 @@ private:
     point3<REAL> start_{};
     point3<REAL> end_{};
 };
-
-/**
- * @brief Definition-centric spelling of `nurbs_spline3`.
- *
- * This exact alias preserves interoperability with all APIs that accept an
- * ordinary 3D spline. It does not create a distinct runtime spline type.
- *
- * @tparam REAL Floating-point scalar type.
- */
-template <std::floating_point REAL>
-using nurbs_defined_spline3 = nurbs_spline3<REAL>;
 
 namespace detail {
 

@@ -136,9 +136,9 @@ int main() {
     bool rejected_repeated_boundary_seam = false;
     try {
         static_cast<void>(nurbs_spline3<real>(
-            repeated_start_boundary.control_points(),
-            repeated_start_boundary.weights(),
-            repeated_start_boundary.knots(),
+            repeated_start_boundary.get_control_points(),
+            repeated_start_boundary.get_weights(),
+            repeated_start_boundary.get_knots(),
             repeated_start_boundary.degree(),
             true));
     } catch (const std::invalid_argument&) {
