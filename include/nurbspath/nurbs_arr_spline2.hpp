@@ -11,6 +11,7 @@
 #include <concepts>
 #include <cstddef>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -43,6 +44,15 @@ public:
     using real_t = REAL;
 
     /**
+     * @brief Allocation-free range of flattened indices into `parameters`.
+     *
+     * The bounds are captured when a range getter is called. Query a new
+     * range after replacing or resizing the public `parameters` array.
+     */
+    using parameter_index_range =
+        std::ranges::iota_view<std::size_t, std::size_t>;
+
+    /**
      * @brief Flattened control coordinates, weights, and knots.
      *
      * This value is public so fitting and optimization code can copy, replace,
@@ -51,6 +61,78 @@ public:
      * called.
      */
     std::valarray<REAL> parameters;
+
+    /**
+     * @brief Construct a standard open 2D spline with explicit tolerance.
+     *
+     * Control points are distributed uniformly from `start` to `end` with
+     * `lerp`, all rational weights are one, and standard open-clamped knots
+     * span `[0, distance(start, end)]`.
+     *
+     * @param start First control point and active-domain endpoint.
+     * @param end Final control point and active-domain endpoint.
+     * @param control_point_count Number of uniformly spaced control points.
+     * @param degree Positive degree below `control_point_count`.
+     * @param tolerance Positive definition and parameter-boundary tolerance.
+     * @throws std::invalid_argument When the points, counts, degree, distance,
+     * tolerance, or generated definition is invalid.
+     * @throws std::overflow_error When the flattened size is not representable.
+     * @throws std::domain_error When an endpoint has near-zero homogeneous weight.
+     */
+    nurbs_arr_spline2(
+        const point2<REAL>& start,
+        const point2<REAL>& end,
+        std::size_t control_point_count,
+        std::size_t degree,
+        REAL tolerance)
+        : nurbs_arr_spline2(
+              start,
+              end,
+              control_point_count,
+              degree,
+              false,
+              tolerance) {}
+
+    /**
+     * @brief Construct a standard open or closed spline between two points.
+     *
+     * Control points are distributed uniformly from `start` to `end` with
+     * `lerp`, all rational weights are one, and standard open-clamped knots
+     * span `[0, distance(start, end)]`. A closed definition must also satisfy
+     * the ordinary closed-seam validation.
+     *
+     * @tparam CLOSED Exact Boolean closure-flag type; defaults to `bool`.
+     * @param start First control point and active-domain endpoint.
+     * @param end Final control point and active-domain endpoint.
+     * @param control_point_count Number of uniformly spaced control points.
+     * @param degree Positive degree below `control_point_count`.
+     * @param closed True when active-domain endpoints must coincide; defaults
+     * to false.
+     * @param tolerance Positive definition and parameter-boundary tolerance;
+     * defaults to `64 * std::numeric_limits<REAL>::epsilon()`.
+     * @throws std::invalid_argument When the points, counts, degree, distance,
+     * tolerance, generated definition, or requested seam is invalid.
+     * @throws std::overflow_error When the flattened size is not representable.
+     * @throws std::domain_error When an endpoint has near-zero homogeneous weight.
+     */
+    template <std::same_as<bool> CLOSED = bool>
+    nurbs_arr_spline2(
+        const point2<REAL>& start,
+        const point2<REAL>& end,
+        std::size_t control_point_count,
+        std::size_t degree,
+        CLOSED closed = false,
+        REAL tolerance = REAL(64) * std::numeric_limits<REAL>::epsilon())
+        : nurbs_arr_spline2(
+              standard_parameters(start, end, control_point_count, degree),
+              degree,
+              false,
+              tolerance) {
+        set_standard_knots(REAL(0), distance(start, end));
+        if (closed) {
+            set_closed(true);
+        }
+    }
 
     /**
      * @brief Construct an open array-backed spline from flattened parameters.
@@ -210,6 +292,51 @@ public:
     }
 
     /**
+     * @brief Get the flattened indices occupied by control-point coordinates.
+     *
+     * The returned half-open range counts individual X/Y scalar values, so it
+     * contains twice as many indices as there are control points. Its values
+     * can be used directly to index the public `parameters` array.
+     *
+     * @return Iterable scalar-index range `[0, 2 * control_point_count())`.
+     * @throws std::invalid_argument When the current array shape is invalid.
+     */
+    [[nodiscard]] parameter_index_range get_control_point_count_range() const {
+        const layout_info layout = checked_layout();
+        return std::views::iota(std::size_t(0), layout.weight_offset);
+    }
+
+    /**
+     * @brief Get the flattened indices occupied by rational weights.
+     *
+     * The returned half-open range contains one scalar index per weight. Its
+     * values can be used directly to index the public `parameters` array.
+     *
+     * @return Iterable scalar-index range `[2 * C, 3 * C)`, where `C` is the
+     * control-point count.
+     * @throws std::invalid_argument When the current array shape is invalid.
+     */
+    [[nodiscard]] parameter_index_range get_weight_count_range() const {
+        const layout_info layout = checked_layout();
+        return std::views::iota(layout.weight_offset, layout.knot_offset);
+    }
+
+    /**
+     * @brief Get the flattened indices occupied by knots.
+     *
+     * The returned half-open range contains one scalar index per knot. Its
+     * values can be used directly to index the public `parameters` array.
+     *
+     * @return Iterable scalar-index range `[3 * C, parameters.size())`, where
+     * `C` is the control-point count.
+     * @throws std::invalid_argument When the current array shape is invalid.
+     */
+    [[nodiscard]] parameter_index_range get_knot_count_range() const {
+        const layout_info layout = checked_layout();
+        return std::views::iota(layout.knot_offset, parameters.size());
+    }
+
+    /**
      * @brief Get all control points as detached point values.
      * @return Control points reconstructed in index order.
      * @throws std::invalid_argument When the current array shape is invalid.
@@ -349,6 +476,34 @@ public:
         nurbs_arr_spline2 replacement(
             std::move(values), degree_, closed_, tolerance_);
         *this = std::move(replacement);
+    }
+
+    /**
+     * @brief Atomically copy and replace the complete public scalar array.
+     *
+     * Exactly `number_of_parameters()` consecutive values are copied before
+     * validation, so `values` may point to the first element of this object's
+     * current `parameters` storage. This overload cannot verify the source
+     * buffer length; passing a non-null pointer to fewer readable values has
+     * undefined behavior.
+     *
+     * @param values Pointer to at least `number_of_parameters()` flattened
+     * coordinates, weights, and knots.
+     * @throws std::invalid_argument When `values` is null or the copied
+     * candidate definition is invalid.
+     * @throws std::domain_error When an endpoint has near-zero homogeneous weight.
+     * @throws std::bad_alloc When allocating the detached candidate fails.
+     */
+    void set_parameters(const REAL* values) {
+        if (values == nullptr) {
+            throw std::invalid_argument(
+                "array-backed 2D NURBS parameter pointer must not be null");
+        }
+
+        // Detach before validation and assignment because values may alias
+        // the current public valarray storage.
+        std::valarray<REAL> candidate(values, parameters.size());
+        set_parameters(std::move(candidate));
     }
 
     /**
@@ -736,6 +891,52 @@ public:
     }
 
     /**
+     * @brief Evaluate unsigned geometric curvature in the 2D world.
+     *
+     * Curvature is calculated analytically as
+     * `abs(C'(s) cross C''(s)) / length(C'(s))^3` and is independent of the
+     * scale of the native parameter while the analytic derivatives remain
+     * representable in `REAL`. At an internal knot without second-derivative
+     * continuity, the result uses the right-hand nonempty span; `s_max()` uses
+     * the left-hand nonempty span. This one-sided value does not represent
+     * curvature at a corner.
+     *
+     * @param s Finite parameter in the active knot domain.
+     * @param tangent_tolerance Nonnegative finite minimum accepted
+     * first-derivative length.
+     * @return Nonnegative curvature magnitude in inverse 2D world units.
+     * @throws std::invalid_argument When the current definition is invalid or
+     * `tangent_tolerance` is negative or non-finite.
+     * @throws std::out_of_range When `s` is non-finite or outside the domain.
+     * @throws std::domain_error When a homogeneous weight is near zero or the
+     * first-derivative length is non-finite or not longer than
+     * `tangent_tolerance`, or finite curvature cannot be represented.
+     */
+    [[nodiscard]] REAL curvature(
+        REAL s,
+        REAL tangent_tolerance = vector2<REAL>::default_tolerance()) const {
+        if (!(tangent_tolerance >= REAL(0)) ||
+            !std::isfinite(tangent_tolerance)) {
+            throw std::invalid_argument(
+                "curvature tangent tolerance must be finite and nonnegative");
+        }
+
+        const spline_derivatives2<REAL> derivatives = derivatives_at(s);
+        const REAL speed = derivatives.first.length();
+        if (!std::isfinite(speed) || !(speed > tangent_tolerance)) {
+            throw std::domain_error(
+                "curvature requires a finite nonzero 2D spline derivative");
+        }
+        const vector2<REAL> unit = derivatives.first / speed;
+        const vector2<REAL> scaled_second = derivatives.second / speed;
+        const REAL result = std::abs(unit.cross(scaled_second)) / speed;
+        if (!std::isfinite(result)) {
+            throw std::domain_error("cannot represent finite 2D spline curvature");
+        }
+        return result;
+    }
+
+    /**
      * @brief Estimate arc length using a uniform-native-s polyline.
      * @param segment_count Positive number of approximation segments.
      * @return Approximate length in 2D world units.
@@ -956,14 +1157,7 @@ public:
      * @throws std::bad_alloc When allocating vector storage fails.
      */
     [[nodiscard]] nurbs_spline2<REAL> to_nurbs_spline() const {
-        const validated_state state = validated_definition();
-        return nurbs_spline2<REAL>(
-            control_points_for(state.layout),
-            weights_for(state.layout),
-            knots_for(state.layout),
-            degree_,
-            closed_,
-            tolerance_);
+        return nurbs_spline2<REAL>(*this);
     }
 
 private:
@@ -979,6 +1173,44 @@ private:
         point2<REAL> start;
         point2<REAL> end;
     };
+
+    [[nodiscard]] static std::valarray<REAL> standard_parameters(
+        const point2<REAL>& start,
+        const point2<REAL>& end,
+        std::size_t control_point_count,
+        std::size_t degree) {
+        const std::size_t knot_count =
+            nurbs_knot_count(degree, control_point_count);
+        const std::size_t maximum = std::numeric_limits<std::size_t>::max();
+        if (control_point_count >
+            (maximum - knot_count) / std::size_t(3)) {
+            throw std::overflow_error(
+                "array-backed 2D NURBS parameter count overflows size_t");
+        }
+        std::vector<point2<REAL>> control_points(control_point_count);
+        const REAL denominator =
+            static_cast<REAL>(control_point_count - std::size_t(1));
+        for (std::size_t index = 0; index < control_point_count; ++index) {
+            const REAL fraction = static_cast<REAL>(index) / denominator;
+            control_points[index] = lerp(start, end, fraction);
+        }
+
+        std::vector<REAL> knots(knot_count, REAL(0));
+        const std::size_t span_count = control_point_count - degree;
+        for (std::size_t span = 1; span < span_count; ++span) {
+            knots[degree + span] =
+                static_cast<REAL>(span) / static_cast<REAL>(span_count);
+        }
+        for (std::size_t index = control_point_count;
+             index < knots.size(); ++index) {
+            knots[index] = REAL(1);
+        }
+        return flatten_components(
+            control_points,
+            std::vector<REAL>(control_point_count, REAL(1)),
+            knots,
+            degree);
+    }
 
     [[nodiscard]] static std::valarray<REAL> flatten_components(
         const std::vector<point2<REAL>>& control_points,
@@ -1350,5 +1582,16 @@ private:
     REAL tolerance_;
     bool closed_ = false;
 };
+
+template <std::floating_point REAL>
+nurbs_spline2<REAL>::nurbs_spline2(
+    const nurbs_arr_spline2<REAL>& spline)
+    : nurbs_spline2(
+          spline.get_control_points(),
+          spline.get_weights(),
+          spline.get_knots(),
+          spline.degree(),
+          spline.is_closed(),
+          spline.tolerance()) {}
 
 } // namespace nurbspath

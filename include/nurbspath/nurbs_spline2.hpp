@@ -17,6 +17,9 @@
 
 namespace nurbspath {
 
+template <std::floating_point REAL>
+class nurbs_arr_spline2;
+
 /**
  * @brief Position and first two derivatives at one 2D spline parameter.
  * @tparam REAL Floating-point scalar type.
@@ -44,6 +47,75 @@ struct spline_derivatives2 {
 template <std::floating_point REAL>
 class nurbs_spline2 {
 public:
+    /**
+     * @brief Construct a standard open 2D spline with explicit tolerance.
+     *
+     * Control points are distributed uniformly from `start` to `end` with
+     * `lerp`, all rational weights are one, and standard open-clamped knots
+     * span `[0, distance(start, end)]`.
+     *
+     * @param start First control point and active-domain endpoint.
+     * @param end Final control point and active-domain endpoint.
+     * @param control_point_count Number of uniformly spaced control points.
+     * @param degree Positive degree below `control_point_count`.
+     * @param tolerance Positive definition and parameter-boundary tolerance.
+     * @throws std::invalid_argument When the points, counts, degree, distance,
+     * tolerance, or generated definition is invalid.
+     * @throws std::overflow_error When the required knot count is not representable.
+     * @throws std::domain_error When an endpoint has near-zero homogeneous weight.
+     */
+    nurbs_spline2(
+        const point2<REAL>& start,
+        const point2<REAL>& end,
+        std::size_t control_point_count,
+        std::size_t degree,
+        REAL tolerance)
+        : nurbs_spline2(
+              start,
+              end,
+              control_point_count,
+              degree,
+              false,
+              tolerance) {}
+
+    /**
+     * @brief Construct a standard open or closed 2D spline between two points.
+     *
+     * Control points are distributed uniformly from `start` to `end` with
+     * `lerp`, all rational weights are one, and standard open-clamped knots
+     * span `[0, distance(start, end)]`. A closed definition must also satisfy
+     * the ordinary closed-seam validation.
+     *
+     * @tparam CLOSED Exact Boolean closure-flag type; defaults to `bool`.
+     * @param start First control point and active-domain endpoint.
+     * @param end Final control point and active-domain endpoint.
+     * @param control_point_count Number of uniformly spaced control points.
+     * @param degree Positive degree below `control_point_count`.
+     * @param closed True when active-domain endpoints must coincide; defaults
+     * to false.
+     * @param tolerance Positive definition and parameter-boundary tolerance;
+     * defaults to `64 * std::numeric_limits<REAL>::epsilon()`.
+     * @throws std::invalid_argument When the points, counts, degree, distance,
+     * tolerance, generated definition, or requested seam is invalid.
+     * @throws std::overflow_error When the required knot count is not representable.
+     * @throws std::domain_error When an endpoint has near-zero homogeneous weight.
+     */
+    template <std::same_as<bool> CLOSED = bool>
+    nurbs_spline2(
+        const point2<REAL>& start,
+        const point2<REAL>& end,
+        std::size_t control_point_count,
+        std::size_t degree,
+        CLOSED closed = false,
+        REAL tolerance = REAL(64) * std::numeric_limits<REAL>::epsilon())
+        : nurbs_spline2(
+              make_standard_definition(
+                  start, end, control_point_count, degree),
+              degree,
+              closed,
+              tolerance,
+              distance(start, end)) {}
+
     /**
      * @brief Construct a 2D NURBS curve from its complete definition.
      * @param control_points Control points in the 2D world.
@@ -94,6 +166,16 @@ public:
           closed_(closed) {
         validate_and_refresh();
     }
+
+    /**
+     * @brief Copy an array-backed 2D NURBS into ordinary vector storage.
+     * @param spline Array-backed spline whose current complete state is copied.
+     * @throws std::invalid_argument When the array-backed definition is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero
+     * homogeneous weight.
+     * @throws std::bad_alloc When allocating the copied vector storage fails.
+     */
+    explicit nurbs_spline2(const nurbs_arr_spline2<REAL>& spline);
 
     /** @brief Get all 2D control points. @return Constant control-point vector reference. */
     [[nodiscard]] const std::vector<point2<REAL>>&
@@ -193,6 +275,58 @@ public:
             return "K[" + std::to_string(index) + "]";
         }
         throw std::out_of_range("2D NURBS parameter index is out of range");
+    }
+
+    /**
+     * @brief Atomically replace all scalar parameters from a raw sequence.
+     *
+     * The sequence uses the same flattened order as `get_parameter`: all
+     * control-point coordinates in point-major X/Y order, followed by all
+     * weights and all knots. Exactly `number_of_parameters()` readable values
+     * are copied before validation; the pointer is not retained. The current
+     * degree, closure state, and tolerance are preserved.
+     *
+     * This deliberately low-level overload cannot verify the source extent.
+     * The caller must ensure that `parameter_values` points to a contiguous
+     * sequence containing at least `number_of_parameters()` values.
+     *
+     * @param parameter_values Non-null pointer to the first candidate scalar.
+     * @throws std::invalid_argument When `parameter_values` is null or the
+     * resulting definition or seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero
+     * homogeneous weight.
+     * @throws std::bad_alloc When allocating the detached candidate fails.
+     */
+    void set_parameters(const REAL* parameter_values) {
+        if (parameter_values == nullptr) {
+            throw std::invalid_argument(
+                "2D NURBS parameter source pointer must not be null");
+        }
+
+        std::vector<point2<REAL>> candidate_control_points(
+            control_points_.size());
+        std::size_t offset = 0;
+        for (point2<REAL>& point : candidate_control_points) {
+            point.x = parameter_values[offset++];
+            point.y = parameter_values[offset++];
+        }
+
+        std::vector<REAL> candidate_weights(weights_.size());
+        for (REAL& weight : candidate_weights) {
+            weight = parameter_values[offset++];
+        }
+
+        std::vector<REAL> candidate_knots(knots_.size());
+        for (REAL& knot : candidate_knots) {
+            knot = parameter_values[offset++];
+        }
+
+        commit_definition(
+            std::move(candidate_control_points),
+            std::move(candidate_weights),
+            std::move(candidate_knots),
+            closed_,
+            tolerance_);
     }
 
     /**
@@ -367,6 +501,84 @@ public:
     }
 
     /**
+     * @brief Set standard open-clamped knots on the native domain `[0, s_end]`.
+     *
+     * Each endpoint receives multiplicity `degree() + 1`. Any knots between
+     * those endpoint blocks are spaced uniformly. For a single-span spline,
+     * the first half of the knot vector is zero and the second half is
+     * `s_end`. Every generated knot span must have a finite reciprocal. The
+     * complete candidate definition is validated before commit.
+     *
+     * @param s_end Finite positive end of the new native parameter domain.
+     * @throws std::invalid_argument When `s_end` or the resulting definition
+     * or closed seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero
+     * homogeneous weight.
+     */
+    void set_standard_knots(REAL s_end) {
+        set_standard_knots(REAL(0), s_end);
+    }
+
+    /**
+     * @brief Set standard open-clamped knots on `[s_start, s_end]`.
+     *
+     * Each endpoint receives multiplicity `degree() + 1`. When the spline
+     * has more than one knot span, simple interior knots divide the requested
+     * domain uniformly. For a single-span spline, the knot vector consists
+     * of equally sized `s_start` and `s_end` blocks. The complete candidate
+     * definition is validated before commit. The scalar representation must
+     * provide distinct interior knots and a finite reciprocal for every
+     * generated knot-span length.
+     *
+     * @param s_start Finite start of the new native parameter domain.
+     * @param s_end Finite end of the new native parameter domain, strictly
+     * greater than `s_start` and separated from it by a finite distance.
+     * @throws std::invalid_argument When either bound or the resulting
+     * definition or closed seam is invalid.
+     * @throws std::domain_error When endpoint evaluation has near-zero
+     * homogeneous weight.
+     */
+    void set_standard_knots(REAL s_start, REAL s_end) {
+        if (!std::isfinite(s_start) || !std::isfinite(s_end) ||
+            !(s_end > s_start) || !std::isfinite(s_end - s_start)) {
+            throw std::invalid_argument(
+                "standard 2D NURBS knot domain must have finite positive length");
+        }
+
+        const std::size_t span_count = control_points_.size() - degree_;
+        std::vector<REAL> standard_knots(knots_.size(), s_start);
+        const auto has_usable_span = [](REAL lower, REAL upper) {
+            const REAL length = upper - lower;
+            return length > REAL(0) && std::isfinite(length) &&
+                   std::isfinite(REAL(1) / length);
+        };
+        REAL previous_knot = s_start;
+        for (std::size_t span = 1; span < span_count; ++span) {
+            const REAL fraction =
+                static_cast<REAL>(span) / static_cast<REAL>(span_count);
+            const REAL interior_knot =
+                std::lerp(s_start, s_end, fraction);
+            if (!(interior_knot < s_end) ||
+                !has_usable_span(previous_knot, interior_knot)) {
+                throw std::invalid_argument(
+                    "standard 2D NURBS knot spans must be numerically usable");
+            }
+            standard_knots[degree_ + span] = interior_knot;
+            previous_knot = interior_knot;
+        }
+        if (!has_usable_span(previous_knot, s_end)) {
+            throw std::invalid_argument(
+                "standard 2D NURBS knot spans must be numerically usable");
+        }
+        for (std::size_t index = control_points_.size();
+             index < standard_knots.size();
+             ++index) {
+            standard_knots[index] = s_end;
+        }
+        set_knots(std::move(standard_knots));
+    }
+
+    /**
      * @brief Change the validation and parameter-boundary tolerance atomically.
      * @param tolerance New finite positive tolerance.
      * @throws std::invalid_argument When tolerance or the resulting seam is invalid.
@@ -520,6 +732,53 @@ public:
         REAL s,
         REAL tolerance = vector2<REAL>::default_tolerance()) const {
         return first_derivative(s).normalized(tolerance);
+    }
+
+    /**
+     * @brief Evaluate the unsigned curvature magnitude.
+     *
+     * Curvature is computed analytically as
+     * `abs(first.cross(second)) / length(first)^3`. It is independent of the
+     * spline parameterization while the analytic derivatives remain
+     * representable in `REAL`, and has units of inverse 2D world length. At
+     * an internal knot without second-derivative continuity, the result uses
+     * the right-hand nonempty span; `s_max()` uses the left-hand nonempty span.
+     *
+     * @param s Finite parameter in the active knot domain.
+     * @param tangent_tolerance Finite nonnegative minimum accepted
+     * first-derivative length.
+     * @return Nonnegative curvature magnitude at `s`.
+     * @throws std::invalid_argument When `tangent_tolerance` is negative or
+     * non-finite.
+     * @throws std::out_of_range When `s` is non-finite or lies outside the
+     * configured path's tolerated active domain.
+     * @throws std::domain_error When the homogeneous weight is near zero or
+     * the first-derivative length is non-finite or not greater than
+     * `tangent_tolerance`, or finite curvature cannot be represented.
+     */
+    [[nodiscard]] REAL curvature(
+        REAL s,
+        REAL tangent_tolerance = vector2<REAL>::default_tolerance()) const {
+        if (tangent_tolerance < REAL(0) ||
+            !std::isfinite(tangent_tolerance)) {
+            throw std::invalid_argument(
+                "curvature tangent tolerance must be finite and nonnegative");
+        }
+
+        const spline_derivatives2<REAL> derivatives = derivatives_at(s);
+        const REAL speed = derivatives.first.length();
+        if (!std::isfinite(speed) || !(speed > tangent_tolerance)) {
+            throw std::domain_error(
+                "cannot evaluate curvature with an invalid tangent length");
+        }
+
+        const vector2<REAL> unit = derivatives.first / speed;
+        const vector2<REAL> scaled_second = derivatives.second / speed;
+        const REAL result = std::abs(unit.cross(scaled_second)) / speed;
+        if (!std::isfinite(result)) {
+            throw std::domain_error("cannot represent finite spline curvature");
+        }
+        return result;
     }
 
     /**
@@ -716,6 +975,63 @@ public:
     }
 
 private:
+    struct standard_spline_definition {
+        std::vector<point2<REAL>> control_points;
+        std::vector<REAL> weights;
+        std::vector<REAL> knots;
+    };
+
+    [[nodiscard]] static standard_spline_definition make_standard_definition(
+        const point2<REAL>& start,
+        const point2<REAL>& end,
+        std::size_t control_point_count,
+        std::size_t degree) {
+        const std::size_t knot_count =
+            nurbs_knot_count(degree, control_point_count);
+        std::vector<point2<REAL>> control_points(control_point_count);
+        const REAL denominator =
+            static_cast<REAL>(control_point_count - std::size_t(1));
+        for (std::size_t index = 0; index < control_point_count; ++index) {
+            const REAL fraction = static_cast<REAL>(index) / denominator;
+            control_points[index] = lerp(start, end, fraction);
+        }
+
+        std::vector<REAL> knots(knot_count, REAL(0));
+        const std::size_t span_count = control_point_count - degree;
+        for (std::size_t span = 1; span < span_count; ++span) {
+            knots[degree + span] =
+                static_cast<REAL>(span) / static_cast<REAL>(span_count);
+        }
+        for (std::size_t index = control_point_count;
+             index < knots.size();
+             ++index) {
+            knots[index] = REAL(1);
+        }
+        return {
+            std::move(control_points),
+            std::vector<REAL>(control_point_count, REAL(1)),
+            std::move(knots)};
+    }
+
+    nurbs_spline2(
+        standard_spline_definition definition,
+        std::size_t degree,
+        bool closed,
+        REAL tolerance,
+        REAL s_end)
+        : nurbs_spline2(
+              std::move(definition.control_points),
+              std::move(definition.weights),
+              std::move(definition.knots),
+              degree,
+              false,
+              tolerance) {
+        set_standard_knots(REAL(0), s_end);
+        if (closed) {
+            set_closed(true);
+        }
+    }
+
     void validate_and_refresh() {
         validate_definition();
         const spline_derivatives2<REAL> start_values = derivatives_at(s_min());

@@ -3,10 +3,164 @@
 #include "test_support.hpp"
 
 #include <cmath>
+#include <cstddef>
+#include <limits>
 #include <stdexcept>
+#include <vector>
 
 int main() {
     using namespace test_support;
+
+    const auto throws_invalid_argument = [](const auto& operation) {
+        try {
+            operation();
+        } catch (const std::invalid_argument&) {
+            return true;
+        }
+        return false;
+    };
+    const auto throws_overflow_error = [](const auto& operation) {
+        try {
+            operation();
+        } catch (const std::overflow_error&) {
+            return true;
+        }
+        return false;
+    };
+    const auto throws_domain_error = [](const auto& operation) {
+        try {
+            operation();
+        } catch (const std::domain_error&) {
+            return true;
+        }
+        return false;
+    };
+
+    const point3<real> standard_start{1.0, -2.0, 3.0};
+    const point3<real> standard_end{4.0, 2.0, 3.0};
+    constexpr std::size_t standard_control_count = 6;
+    constexpr std::size_t standard_degree = 3;
+    constexpr real standard_tolerance = 4e-10;
+    const real standard_distance = distance(standard_start, standard_end);
+    const nurbs_spline3<real> standard_spline(
+        standard_start,
+        standard_end,
+        standard_control_count,
+        standard_degree,
+        false,
+        standard_tolerance);
+    const nurbs_spline3<real> defaulted_standard_spline(
+        standard_start,
+        standard_end,
+        standard_control_count,
+        standard_degree);
+
+    check(!defaulted_standard_spline.is_closed() &&
+              defaulted_standard_spline.tolerance() ==
+                  real(64) * std::numeric_limits<real>::epsilon(),
+          "standard 3D constructor defaults closure and tolerance");
+
+    check(standard_spline.get_control_points().size() ==
+                  standard_control_count &&
+              standard_spline.get_weights().size() == standard_control_count &&
+              standard_spline.degree() == standard_degree &&
+              !standard_spline.is_closed() &&
+              standard_spline.tolerance() == standard_tolerance,
+          "standard 3D constructor preserves counts and open metadata");
+    for (std::size_t index = 0; index < standard_control_count; ++index) {
+        const real fraction = static_cast<real>(index) /
+            static_cast<real>(standard_control_count - 1);
+        check_point(
+            standard_spline.get_control_point(index),
+            lerp(standard_start, standard_end, fraction),
+            0.0,
+            "standard 3D constructor uses exact point lerp controls");
+        check(standard_spline.get_weight(index) == 1.0,
+              "standard 3D constructor uses unit weights");
+    }
+    const std::vector<real> standard_knots{
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        standard_distance / 3.0,
+        2.0 * standard_distance / 3.0,
+        standard_distance,
+        standard_distance,
+        standard_distance,
+        standard_distance};
+    check(standard_spline.get_knots().size() == standard_knots.size(),
+          "standard 3D constructor creates the required knot count");
+    for (std::size_t index = 0; index < standard_knots.size(); ++index) {
+        check_near(
+            standard_spline.get_knot(index),
+            standard_knots[index],
+            1e-14,
+            "standard 3D constructor creates standard distance knots");
+    }
+    check_near(standard_spline.s_min(), 0.0, 0.0,
+               "standard 3D constructor starts its domain at zero");
+    check_near(standard_spline.s_max(), standard_distance, 0.0,
+               "standard 3D constructor ends its domain at point distance");
+    check_point(standard_spline.get_start(), standard_start, 0.0,
+                "standard 3D constructor caches its first endpoint");
+    check_point(standard_spline.get_end(), standard_end, 1e-14,
+                "standard 3D constructor caches its second endpoint");
+    check_point(
+        standard_spline.get_start(),
+        standard_spline.evaluate(standard_spline.s_min()),
+        0.0,
+        "standard 3D constructor start cache matches evaluation");
+    check_point(
+        standard_spline.get_end(),
+        standard_spline.evaluate(standard_spline.s_max()),
+        0.0,
+        "standard 3D constructor end cache matches evaluation");
+
+    constexpr float converted_standard_tolerance = 3e-6F;
+    const nurbs_spline3<real> standard_tolerance_overload(
+        standard_start,
+        standard_end,
+        standard_control_count,
+        standard_degree,
+        converted_standard_tolerance);
+    check(!standard_tolerance_overload.is_closed() &&
+              standard_tolerance_overload.tolerance() ==
+                  static_cast<real>(converted_standard_tolerance),
+          "standard 3D numeric argument selects tolerance, not closure");
+
+    check(throws_invalid_argument([&] {
+              static_cast<void>(
+                  nurbs_spline3<real>(standard_start, standard_end, 3, 3));
+          }),
+          "standard 3D constructor rejects a count not above degree");
+    check(throws_invalid_argument([&] {
+              static_cast<void>(
+                  nurbs_spline3<real>(standard_start, standard_end, 3, 0));
+          }),
+          "standard 3D constructor rejects degree zero");
+    check(throws_invalid_argument([&] {
+              static_cast<void>(
+                  nurbs_spline3<real>(standard_start, standard_start, 4, 3));
+          }),
+          "standard 3D constructor rejects a zero-distance knot domain");
+    check(throws_overflow_error([&] {
+              static_cast<void>(nurbs_spline3<real>(
+                  standard_start,
+                  standard_end,
+                  std::numeric_limits<std::size_t>::max(),
+                  1));
+          }),
+          "standard 3D constructor rejects knot-count overflow before allocation");
+    check(throws_invalid_argument([&] {
+              static_cast<void>(nurbs_spline3<real>(
+                  standard_start,
+                  standard_end,
+                  standard_control_count,
+                  standard_degree,
+                  true));
+          }),
+          "standard 3D constructor rejects a distinct closed seam");
 
     const auto line = make_line(
         {0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}, 0.0, 10.0);
@@ -21,8 +175,32 @@ int main() {
           "unit-weight linear spline third derivative");
     check(line.tangent(4.0).approximately_equal({1.0, 0.0, 0.0}, 1e-11),
           "linear spline tangent");
+    check_near(line.curvature(4.0), 0.0, 0.0,
+               "linear spline has zero curvature");
+    check(throws_invalid_argument([&] {
+              static_cast<void>(line.curvature(4.0, -1.0));
+          }) &&
+              throws_invalid_argument([&] {
+                  static_cast<void>(line.curvature(
+                      4.0, std::numeric_limits<real>::quiet_NaN()));
+              }),
+          "3D curvature rejects invalid tangent tolerances");
+    check(throws_domain_error([&] {
+              static_cast<void>(line.curvature(4.0, 1.0));
+          }),
+          "3D curvature rejects speed equal to its tangent tolerance");
     check_near(line.approximate_arc_length(), 10.0, 1e-9,
                "linear spline arc length");
+
+    const nurbs_spline3<real> stationary(
+        {{2.0, 3.0, 4.0}, {2.0, 3.0, 4.0}},
+        {1.0, 1.0},
+        {0.0, 0.0, 1.0, 1.0},
+        1);
+    check(throws_domain_error([&] {
+              static_cast<void>(stationary.curvature(0.5));
+          }),
+          "3D curvature rejects a stationary spline point");
 
     const real root_half = std::sqrt(0.5);
     const nurbs_spline3<real> quarter_circle(
@@ -32,6 +210,42 @@ int main() {
         2);
     check_point(quarter_circle.evaluate(0.5), {root_half, root_half, 0.0}, 1e-11,
                 "rational quarter circle evaluation");
+    check_near(quarter_circle.curvature(0.5), 1.0, 1e-11,
+               "rational 3D unit circle has unit curvature");
+
+    constexpr real narrow_domain_end = 1e-104;
+    const nurbs_spline3<real> narrow_quarter_circle(
+        quarter_circle.get_control_points(),
+        quarter_circle.get_weights(),
+        {0.0,
+         0.0,
+         0.0,
+         narrow_domain_end,
+         narrow_domain_end,
+         narrow_domain_end},
+        2);
+    check_near(
+        narrow_quarter_circle.curvature(narrow_domain_end / 2.0),
+        1.0,
+        1e-11,
+        "3D curvature remains stable on a narrow native parameter domain");
+
+    constexpr real wide_domain_end = 1e104;
+    const nurbs_spline3<real> wide_quarter_circle(
+        quarter_circle.get_control_points(),
+        quarter_circle.get_weights(),
+        {0.0,
+         0.0,
+         0.0,
+         wide_domain_end,
+         wide_domain_end,
+         wide_domain_end},
+        2);
+    check_near(
+        wide_quarter_circle.curvature(wide_domain_end / 2.0, 0.0),
+        1.0,
+        1e-11,
+        "3D curvature remains stable on a wide native parameter domain");
 
     const nurbs_spline3<real> unit_cubic(
         {{0.0, 0.0, 0.0},

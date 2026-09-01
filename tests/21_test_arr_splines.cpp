@@ -6,7 +6,9 @@
 #include <cmath>
 #include <concepts>
 #include <cstddef>
+#include <iterator>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -66,11 +68,63 @@ concept has_legacy_knot_getter = requires(SPLINE& spline) {
 static_assert(std::same_as<typename arr_spline2::real_t, real>);
 static_assert(std::same_as<typename arr_spline3::real_t, real>);
 static_assert(std::same_as<
+              typename arr_spline2::parameter_index_range,
+              std::ranges::iota_view<std::size_t, std::size_t>>);
+static_assert(std::same_as<
+              typename arr_spline3::parameter_index_range,
+              std::ranges::iota_view<std::size_t, std::size_t>>);
+static_assert(std::ranges::random_access_range<
+              typename arr_spline2::parameter_index_range>);
+static_assert(std::ranges::sized_range<
+              typename arr_spline3::parameter_index_range>);
+static_assert(std::same_as<
+              std::ranges::range_value_t<
+                  typename arr_spline2::parameter_index_range>,
+              std::size_t>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline2&>()
+                           .get_control_point_count_range()),
+              typename arr_spline2::parameter_index_range>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline2&>()
+                           .get_weight_count_range()),
+              typename arr_spline2::parameter_index_range>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline2&>()
+                           .get_knot_count_range()),
+              typename arr_spline2::parameter_index_range>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline3&>()
+                           .get_control_point_count_range()),
+              typename arr_spline3::parameter_index_range>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline3&>()
+                           .get_weight_count_range()),
+              typename arr_spline3::parameter_index_range>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline3&>()
+                           .get_knot_count_range()),
+              typename arr_spline3::parameter_index_range>);
+static_assert(std::same_as<
               decltype(std::declval<arr_spline2&>().parameters),
               std::valarray<real>>);
 static_assert(std::same_as<
               decltype(std::declval<arr_spline3&>().parameters),
               std::valarray<real>>);
+static_assert(std::same_as<
+              decltype(static_cast<void (arr_spline2::*)(const real*)>(
+                  &arr_spline2::set_parameters)),
+              void (arr_spline2::*)(const real*)>);
+static_assert(std::same_as<
+              decltype(static_cast<void (arr_spline3::*)(const real*)>(
+                  &arr_spline3::set_parameters)),
+              void (arr_spline3::*)(const real*)>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline2&>().curvature(real{})),
+              real>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline3&>().curvature(real{})),
+              real>);
 static_assert(!std::same_as<arr_spline2, spline2>);
 static_assert(!std::same_as<arr_spline3, spline3>);
 static_assert(!std::derived_from<arr_spline2, spline2>);
@@ -83,6 +137,8 @@ static_assert(std::assignable_from<arr_spline2&, const arr_spline2&>);
 static_assert(std::assignable_from<arr_spline3&, const arr_spline3&>);
 static_assert(std::constructible_from<arr_spline2, const spline2&>);
 static_assert(std::constructible_from<arr_spline3, const spline3&>);
+static_assert(std::constructible_from<spline2, const arr_spline2&>);
+static_assert(std::constructible_from<spline3, const arr_spline3&>);
 static_assert(!std::convertible_to<spline2, arr_spline2>);
 static_assert(!std::convertible_to<spline3, arr_spline3>);
 static_assert(!std::convertible_to<arr_spline2, spline2>);
@@ -302,6 +358,204 @@ bool throws_exception(FUNCTION&& function) {
         1e-9};
 }
 
+void test_standard_constructor2() {
+    using namespace test_support;
+
+    const nurbspath::point2<real> start{-1.0, 2.0};
+    const nurbspath::point2<real> end{3.0, 5.0};
+    constexpr std::size_t control_count = 5;
+    constexpr std::size_t degree = 2;
+    constexpr real tolerance = 2e-10;
+    const real endpoint_distance = nurbspath::distance(start, end);
+    const arr_spline2 defaulted_spline(
+        start, end, control_count, degree);
+    check(!defaulted_spline.is_closed() &&
+              defaulted_spline.tolerance() ==
+                  real(64) * std::numeric_limits<real>::epsilon(),
+          "2D standard constructor defaults closure and tolerance");
+
+    arr_spline2 spline(
+        start, end, control_count, degree, false, tolerance);
+
+    check(spline.control_point_count() == control_count &&
+              spline.weight_count() == control_count &&
+              spline.degree() == degree && !spline.is_closed() &&
+              spline.tolerance() == tolerance,
+          "2D standard constructor preserves counts and open metadata");
+    for (std::size_t index = 0; index < control_count; ++index) {
+        const real fraction = static_cast<real>(index) /
+            static_cast<real>(control_count - 1);
+        check_point2(
+            spline.get_control_point(index),
+            nurbspath::lerp(start, end, fraction),
+            0.0,
+            "2D standard constructor uses exact point lerp controls");
+        check(spline.get_weight(index) == 1.0,
+              "2D standard constructor uses unit weights");
+    }
+
+    const std::vector<real> expected_knots{
+        0.0,
+        0.0,
+        0.0,
+        endpoint_distance / 3.0,
+        2.0 * endpoint_distance / 3.0,
+        endpoint_distance,
+        endpoint_distance,
+        endpoint_distance};
+    check(spline.knot_count() == expected_knots.size(),
+          "2D standard constructor creates the required knot count");
+    for (std::size_t index = 0; index < expected_knots.size(); ++index) {
+        check_near(
+            spline.get_knot(index),
+            expected_knots[index],
+            1e-14,
+            "2D standard constructor creates standard distance knots");
+    }
+    check_near(spline.s_min(), 0.0, 0.0,
+               "2D standard constructor starts its domain at zero");
+    check_near(spline.s_max(), endpoint_distance, 0.0,
+               "2D standard constructor ends its domain at point distance");
+    check_point2(spline.get_start(), start, 0.0,
+                 "2D standard constructor starts at its first point");
+    check_point2(spline.get_end(), end, 1e-14,
+                 "2D standard constructor ends at its second point");
+
+    constexpr float converted_tolerance = 3e-6F;
+    const arr_spline2 tolerance_overload(
+        start, end, control_count, degree, converted_tolerance);
+    check(!tolerance_overload.is_closed() &&
+              tolerance_overload.tolerance() ==
+                  static_cast<real>(converted_tolerance),
+          "2D standard numeric argument selects tolerance, not closure");
+
+    check(throws_exception<std::invalid_argument>([&] {
+              static_cast<void>(arr_spline2(start, end, 2, 2));
+          }),
+          "2D standard constructor rejects a count not above degree");
+    check(throws_exception<std::invalid_argument>([&] {
+              static_cast<void>(arr_spline2(start, end, 3, 0));
+          }),
+          "2D standard constructor rejects degree zero");
+    check(throws_exception<std::invalid_argument>([&] {
+              static_cast<void>(arr_spline2(start, start, 3, 2));
+          }),
+          "2D standard constructor rejects a zero-distance knot domain");
+    check(throws_exception<std::overflow_error>([&] {
+              static_cast<void>(arr_spline2(
+                  start,
+                  end,
+                  std::numeric_limits<std::size_t>::max() / 3,
+                  1));
+          }),
+          "2D standard constructor rejects flattened-size overflow before allocation");
+    check(throws_exception<std::invalid_argument>([&] {
+              static_cast<void>(
+                  arr_spline2(start, end, control_count, degree, true));
+          }),
+          "2D standard constructor rejects an ordinary distinct closed seam");
+}
+
+void test_standard_constructor3() {
+    using namespace test_support;
+
+    const nurbspath::point3<real> start{1.0, -2.0, 3.0};
+    const nurbspath::point3<real> end{4.0, 2.0, 3.0};
+    constexpr std::size_t control_count = 6;
+    constexpr std::size_t degree = 3;
+    constexpr real tolerance = 4e-10;
+    const real endpoint_distance = nurbspath::distance(start, end);
+    const arr_spline3 defaulted_spline(
+        start, end, control_count, degree);
+    check(!defaulted_spline.is_closed() &&
+              defaulted_spline.tolerance() ==
+                  real(64) * std::numeric_limits<real>::epsilon(),
+          "3D standard constructor defaults closure and tolerance");
+
+    arr_spline3 spline(
+        start, end, control_count, degree, false, tolerance);
+
+    check(spline.control_point_count() == control_count &&
+              spline.weight_count() == control_count &&
+              spline.degree() == degree && !spline.is_closed() &&
+              spline.tolerance() == tolerance,
+          "3D standard constructor preserves counts and open metadata");
+    for (std::size_t index = 0; index < control_count; ++index) {
+        const real fraction = static_cast<real>(index) /
+            static_cast<real>(control_count - 1);
+        check_point(
+            spline.get_control_point(index),
+            nurbspath::lerp(start, end, fraction),
+            0.0,
+            "3D standard constructor uses exact point lerp controls");
+        check(spline.get_weight(index) == 1.0,
+              "3D standard constructor uses unit weights");
+    }
+
+    const std::vector<real> expected_knots{
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        endpoint_distance / 3.0,
+        2.0 * endpoint_distance / 3.0,
+        endpoint_distance,
+        endpoint_distance,
+        endpoint_distance,
+        endpoint_distance};
+    check(spline.knot_count() == expected_knots.size(),
+          "3D standard constructor creates the required knot count");
+    for (std::size_t index = 0; index < expected_knots.size(); ++index) {
+        check_near(
+            spline.get_knot(index),
+            expected_knots[index],
+            1e-14,
+            "3D standard constructor creates standard distance knots");
+    }
+    check_near(spline.s_min(), 0.0, 0.0,
+               "3D standard constructor starts its domain at zero");
+    check_near(spline.s_max(), endpoint_distance, 0.0,
+               "3D standard constructor ends its domain at point distance");
+    check_point(spline.get_start(), start, 0.0,
+                "3D standard constructor starts at its first point");
+    check_point(spline.get_end(), end, 1e-14,
+                "3D standard constructor ends at its second point");
+
+    constexpr long double converted_tolerance = 5e-6L;
+    const arr_spline3 tolerance_overload(
+        start, end, control_count, degree, converted_tolerance);
+    check(!tolerance_overload.is_closed() &&
+              tolerance_overload.tolerance() ==
+                  static_cast<real>(converted_tolerance),
+          "3D standard numeric argument selects tolerance, not closure");
+
+    check(throws_exception<std::invalid_argument>([&] {
+              static_cast<void>(arr_spline3(start, end, 3, 3));
+          }),
+          "3D standard constructor rejects a count not above degree");
+    check(throws_exception<std::invalid_argument>([&] {
+              static_cast<void>(arr_spline3(start, end, 4, 0));
+          }),
+          "3D standard constructor rejects degree zero");
+    check(throws_exception<std::invalid_argument>([&] {
+              static_cast<void>(arr_spline3(start, start, 4, 3));
+          }),
+          "3D standard constructor rejects a zero-distance knot domain");
+    check(throws_exception<std::overflow_error>([&] {
+              static_cast<void>(arr_spline3(
+                  start,
+                  end,
+                  std::numeric_limits<std::size_t>::max() / 4,
+                  1));
+          }),
+          "3D standard constructor rejects flattened-size overflow before allocation");
+    check(throws_exception<std::invalid_argument>([&] {
+              static_cast<void>(
+                  arr_spline3(start, end, control_count, degree, true));
+          }),
+          "3D standard constructor rejects an ordinary distinct closed seam");
+}
+
 void test_flat_layout2() {
     using namespace test_support;
 
@@ -317,6 +571,27 @@ void test_flat_layout2() {
     check(spline.control_point_count() == 3 && spline.weight_count() == 3 &&
               spline.knot_count() == 6,
           "2D flat layout derives control, weight, and knot counts");
+
+    const auto control_range = spline.get_control_point_count_range();
+    const auto weight_range = spline.get_weight_count_range();
+    const auto knot_range = spline.get_knot_count_range();
+    check(std::ranges::equal(
+              control_range,
+              std::views::iota(std::size_t(0), std::size_t(6))) &&
+              std::ranges::equal(
+                  weight_range,
+                  std::views::iota(std::size_t(6), std::size_t(9))) &&
+              std::ranges::equal(
+                  knot_range,
+                  std::views::iota(std::size_t(9), std::size_t(15))),
+          "2D ranges expose exact flattened control-scalar, weight, and knot indices");
+    check(control_range.size() == 2 * spline.control_point_count() &&
+              weight_range.size() == spline.weight_count() &&
+              knot_range.size() == spline.knot_count() &&
+              control_range.size() + weight_range.size() +
+                      knot_range.size() ==
+                  spline.number_of_parameters(),
+          "2D ranges partition every scalar and count coordinates individually");
 
     for (std::size_t index = 0; index < expected.size(); ++index) {
         check(spline.get_parameter(index) == expected[index],
@@ -393,6 +668,16 @@ void test_flat_layout2() {
                  "2D start is evaluated dynamically after replacement");
     check_point2(spline.get_end(), {9.0, 10.0}, 0.0,
                  "2D end is evaluated dynamically after replacement");
+    check(std::ranges::equal(
+              spline.get_control_point_count_range(),
+              std::views::iota(std::size_t(0), std::size_t(8))) &&
+              std::ranges::equal(
+                  spline.get_weight_count_range(),
+                  std::views::iota(std::size_t(8), std::size_t(12))) &&
+              std::ranges::equal(
+                  spline.get_knot_count_range(),
+                  std::views::iota(std::size_t(12), std::size_t(19))),
+          "2D range queries reflect a replaced public array layout");
 
     const std::valarray<real> before_rejected_set = spline.parameters;
     check(throws_exception<std::invalid_argument>([&spline] {
@@ -417,6 +702,27 @@ void test_flat_layout3() {
     check(spline.control_point_count() == 3 && spline.weight_count() == 3 &&
               spline.knot_count() == 6,
           "3D flat layout derives control, weight, and knot counts");
+
+    const auto control_range = spline.get_control_point_count_range();
+    const auto weight_range = spline.get_weight_count_range();
+    const auto knot_range = spline.get_knot_count_range();
+    check(std::ranges::equal(
+              control_range,
+              std::views::iota(std::size_t(0), std::size_t(9))) &&
+              std::ranges::equal(
+                  weight_range,
+                  std::views::iota(std::size_t(9), std::size_t(12))) &&
+              std::ranges::equal(
+                  knot_range,
+                  std::views::iota(std::size_t(12), std::size_t(18))),
+          "3D ranges expose exact flattened control-scalar, weight, and knot indices");
+    check(control_range.size() == 3 * spline.control_point_count() &&
+              weight_range.size() == spline.weight_count() &&
+              knot_range.size() == spline.knot_count() &&
+              control_range.size() + weight_range.size() +
+                      knot_range.size() ==
+                  spline.number_of_parameters(),
+          "3D ranges partition every scalar and count coordinates individually");
 
     for (std::size_t index = 0; index < expected.size(); ++index) {
         check(spline.get_parameter(index) == expected[index],
@@ -479,6 +785,16 @@ void test_flat_layout3() {
                 "3D start is evaluated dynamically after replacement");
     check_point(spline.get_end(), {9.0, 10.0, 11.0}, 0.0,
                 "3D end is evaluated dynamically after replacement");
+    check(std::ranges::equal(
+              spline.get_control_point_count_range(),
+              std::views::iota(std::size_t(0), std::size_t(12))) &&
+              std::ranges::equal(
+                  spline.get_weight_count_range(),
+                  std::views::iota(std::size_t(12), std::size_t(16))) &&
+              std::ranges::equal(
+                  spline.get_knot_count_range(),
+                  std::views::iota(std::size_t(16), std::size_t(23))),
+          "3D range queries reflect a replaced public array layout");
 
     const std::valarray<real> before_rejected_set = spline.parameters;
     check(throws_exception<std::invalid_argument>([&spline] {
@@ -486,6 +802,126 @@ void test_flat_layout3() {
           }) &&
               same_values(spline.parameters, before_rejected_set),
           "3D checked whole-array replacement rejects shape atomically");
+}
+
+void test_pointer_parameters2() {
+    using namespace test_support;
+
+    arr_spline2 spline(quadratic_parameters2(), 2);
+    const std::valarray<real> external{
+        -2.0, 1.0,
+        2.0, 3.0,
+        5.0, -1.0,
+        1.0, 1.5, 2.0,
+        0.0, 0.0, 0.0, 6.0, 6.0, 6.0};
+    spline.set_parameters(std::begin(external));
+    check(same_values(spline.parameters, external) &&
+              spline.get_start().x == -2.0 && spline.s_max() == 6.0,
+          "2D pointer setter copies a complete const external buffer");
+
+    spline.parameters[0] = -3.0;
+    const std::valarray<real> before_alias = spline.parameters;
+    const real* const current_storage = std::begin(spline.parameters);
+    spline.set_parameters(current_storage);
+    check(same_values(spline.parameters, before_alias) &&
+              spline.get_start().x == -3.0,
+          "2D pointer setter detaches a source aliasing current storage");
+
+    const std::valarray<real> before_null = spline.parameters;
+    check(throws_exception<std::invalid_argument>([&spline] {
+              spline.set_parameters(static_cast<const real*>(nullptr));
+          }) &&
+              same_values(spline.parameters, before_null),
+          "2D pointer setter rejects null without changing the spline");
+
+    std::valarray<real> invalid_candidate = spline.parameters;
+    invalid_candidate[6] = 0.0;
+    const std::valarray<real> before_invalid = spline.parameters;
+    check(throws_exception<std::invalid_argument>(
+              [&spline, &invalid_candidate] {
+                  spline.set_parameters(std::begin(invalid_candidate));
+              }) &&
+              same_values(spline.parameters, before_invalid),
+          "2D pointer setter rejects an invalid candidate atomically");
+
+    spline.parameters[6] = 0.0;
+    check(throws_exception<std::invalid_argument>([&spline] {
+              spline.validate();
+          }),
+          "2D direct mutation can leave a value-invalid definition");
+    spline.set_parameters(std::begin(external));
+    check(same_values(spline.parameters, external),
+          "2D pointer setter repairs invalid values from a valid buffer");
+
+    spline.parameters = prefix(external, external.size() - 1);
+    const std::valarray<real> malformed_source = spline.parameters;
+    const std::valarray<real> before_malformed = spline.parameters;
+    check(throws_exception<std::invalid_argument>(
+              [&spline, &malformed_source] {
+                  spline.set_parameters(std::begin(malformed_source));
+              }) &&
+              same_values(spline.parameters, before_malformed),
+          "2D pointer setter rejects a same-length malformed shape atomically");
+}
+
+void test_pointer_parameters3() {
+    using namespace test_support;
+
+    arr_spline3 spline(quadratic_parameters3(), 2);
+    const std::valarray<real> external{
+        -2.0, 1.0, 4.0,
+        2.0, 3.0, -1.0,
+        5.0, -1.0, 2.0,
+        1.0, 1.5, 2.0,
+        0.0, 0.0, 0.0, 6.0, 6.0, 6.0};
+    spline.set_parameters(std::begin(external));
+    check(same_values(spline.parameters, external) &&
+              spline.get_start().x == -2.0 && spline.s_max() == 6.0,
+          "3D pointer setter copies a complete const external buffer");
+
+    spline.parameters[0] = -3.0;
+    const std::valarray<real> before_alias = spline.parameters;
+    const real* const current_storage = std::begin(spline.parameters);
+    spline.set_parameters(current_storage);
+    check(same_values(spline.parameters, before_alias) &&
+              spline.get_start().x == -3.0,
+          "3D pointer setter detaches a source aliasing current storage");
+
+    const std::valarray<real> before_null = spline.parameters;
+    check(throws_exception<std::invalid_argument>([&spline] {
+              spline.set_parameters(static_cast<const real*>(nullptr));
+          }) &&
+              same_values(spline.parameters, before_null),
+          "3D pointer setter rejects null without changing the spline");
+
+    std::valarray<real> invalid_candidate = spline.parameters;
+    invalid_candidate[9] = 0.0;
+    const std::valarray<real> before_invalid = spline.parameters;
+    check(throws_exception<std::invalid_argument>(
+              [&spline, &invalid_candidate] {
+                  spline.set_parameters(std::begin(invalid_candidate));
+              }) &&
+              same_values(spline.parameters, before_invalid),
+          "3D pointer setter rejects an invalid candidate atomically");
+
+    spline.parameters[9] = 0.0;
+    check(throws_exception<std::invalid_argument>([&spline] {
+              spline.validate();
+          }),
+          "3D direct mutation can leave a value-invalid definition");
+    spline.set_parameters(std::begin(external));
+    check(same_values(spline.parameters, external),
+          "3D pointer setter repairs invalid values from a valid buffer");
+
+    spline.parameters = prefix(external, external.size() - 1);
+    const std::valarray<real> malformed_source = spline.parameters;
+    const std::valarray<real> before_malformed = spline.parameters;
+    check(throws_exception<std::invalid_argument>(
+              [&spline, &malformed_source] {
+                  spline.set_parameters(std::begin(malformed_source));
+              }) &&
+              same_values(spline.parameters, before_malformed),
+          "3D pointer setter rejects a same-length malformed shape atomically");
 }
 
 void test_validation2() {
@@ -533,6 +969,9 @@ void test_validation2() {
                   static_cast<void>(spline.to_nurbs_spline());
               }) &&
               throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline2(spline));
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
                   static_cast<void>(spline.get_control_point(0));
               }) &&
               throws_exception<std::invalid_argument>([&spline] {
@@ -540,8 +979,17 @@ void test_validation2() {
               }) &&
               throws_exception<std::invalid_argument>([&spline] {
                   static_cast<void>(spline.get_knot(0));
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_control_point_count_range());
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_weight_count_range());
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_knot_count_range());
               }),
-          "2D geometry, conversion, and getters reject malformed public shape");
+          "2D geometry, both conversions, getters, and ranges reject malformed public shape");
     spline.parameters = valid;
     spline.parameters[6] = 0.0;
     check(throws_exception<std::invalid_argument>([&spline] {
@@ -597,6 +1045,9 @@ void test_validation3() {
                   static_cast<void>(spline.to_nurbs_spline());
               }) &&
               throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline3(spline));
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
                   static_cast<void>(spline.get_control_point(0));
               }) &&
               throws_exception<std::invalid_argument>([&spline] {
@@ -604,8 +1055,17 @@ void test_validation3() {
               }) &&
               throws_exception<std::invalid_argument>([&spline] {
                   static_cast<void>(spline.get_knot(0));
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_control_point_count_range());
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_weight_count_range());
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_knot_count_range());
               }),
-          "3D geometry, conversion, and getters reject malformed public shape");
+          "3D geometry, both conversions, getters, and ranges reject malformed public shape");
     spline.parameters = valid;
     spline.parameters[10] = 0.0;
     check(throws_exception<std::invalid_argument>([&spline] {
@@ -671,13 +1131,31 @@ void test_evaluation_and_conversion2() {
           }),
           "2D array arc-length approximation rejects zero segments");
 
-    const spline2 restored = array.to_nurbs_spline();
+    const spline2 restored(array);
+    const spline2 named_restored = array.to_nurbs_spline();
     const arr_spline2 round_trip(restored);
+    const arr_spline2 named_round_trip(named_restored);
     check(restored.degree() == ordinary.degree() &&
               restored.tolerance() == ordinary.tolerance() &&
               restored.is_closed() == ordinary.is_closed() &&
-              same_values(round_trip.parameters, array.parameters),
-          "2D named and explicit round trip preserves every field");
+              same_values(round_trip.parameters, array.parameters) &&
+              same_values(named_round_trip.parameters, array.parameters),
+          "2D constructor and named round trips preserve every field");
+
+    arr_spline2 mutable_array = array;
+    const spline2 detached_ordinary(mutable_array);
+    const nurbspath::point2<real> detached_point =
+        detached_ordinary.get_control_point(0);
+    mutable_array.parameters[0] += 10.0;
+    check_point2(detached_ordinary.get_control_point(0), detached_point, 0.0,
+                 "2D array-to-ordinary construction detaches storage");
+
+    spline2 mutable_ordinary = ordinary;
+    const arr_spline2 detached_array(mutable_ordinary);
+    mutable_ordinary.set_control_point(0, {10.0, 20.0});
+    check_point2(detached_array.get_control_point(0),
+                 ordinary.get_control_point(0), 0.0,
+                 "2D ordinary-to-array construction detaches storage");
 
     const spline2 multi_span(
         {{0.0, 0.0}, {1.0, 2.0}, {2.0, -1.0}, {4.0, 3.0}, {6.0, 1.0}},
@@ -769,13 +1247,31 @@ void test_evaluation_and_conversion3() {
           }),
           "3D array arc-length approximation rejects zero segments");
 
-    const spline3 restored = array.to_nurbs_spline();
+    const spline3 restored(array);
+    const spline3 named_restored = array.to_nurbs_spline();
     const arr_spline3 round_trip(restored);
+    const arr_spline3 named_round_trip(named_restored);
     check(restored.degree() == ordinary.degree() &&
               restored.tolerance() == ordinary.tolerance() &&
               restored.is_closed() == ordinary.is_closed() &&
-              same_values(round_trip.parameters, array.parameters),
-          "3D named and explicit round trip preserves every field");
+              same_values(round_trip.parameters, array.parameters) &&
+              same_values(named_round_trip.parameters, array.parameters),
+          "3D constructor and named round trips preserve every field");
+
+    arr_spline3 mutable_array = array;
+    const spline3 detached_ordinary(mutable_array);
+    const nurbspath::point3<real> detached_point =
+        detached_ordinary.get_control_point(0);
+    mutable_array.parameters[0] += 10.0;
+    check_point(detached_ordinary.get_control_point(0), detached_point, 0.0,
+                "3D array-to-ordinary construction detaches storage");
+
+    spline3 mutable_ordinary = ordinary;
+    const arr_spline3 detached_array(mutable_ordinary);
+    mutable_ordinary.set_control_point(0, {10.0, 20.0, 30.0});
+    check_point(detached_array.get_control_point(0),
+                ordinary.get_control_point(0), 0.0,
+                "3D ordinary-to-array construction detaches storage");
 
     const spline3 multi_span(
         {{0.0, 0.0, 1.0},
@@ -818,6 +1314,186 @@ void test_evaluation_and_conversion3() {
                   rational_linear.third_derivative(s), 2e-9),
               "3D rational degree-one third derivative matches");
     }
+}
+
+void test_curvature2() {
+    using namespace test_support;
+
+    const arr_spline2 line(make_line2({-2.0, 3.0}, {4.0, -1.0}, 2.0, 9.0));
+    check_near(line.curvature(5.0), 0.0, 0.0,
+               "2D array line has zero curvature");
+
+    const real root_half = std::sqrt(0.5);
+    const arr_spline2 unit_circle(spline2(
+        {{1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}},
+        {1.0, root_half, 1.0},
+        {0.0, 0.0, 0.0, 1.0, 1.0, 1.0},
+        2));
+    for (const real s : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+        check_near(unit_circle.curvature(s), 1.0, 2e-12,
+                   "2D array rational unit circle has unit curvature");
+    }
+
+    const arr_spline2 rescaled_circle(spline2(
+        {{1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}},
+        {1.0, root_half, 1.0},
+        {2.0, 2.0, 2.0, 8.0, 8.0, 8.0},
+        2));
+    check_near(rescaled_circle.curvature(5.0), unit_circle.curvature(0.5),
+               2e-12,
+               "2D array curvature is invariant under parameter rescaling");
+
+    const arr_spline2 narrow_circle(spline2(
+        {{1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}},
+        {1.0, root_half, 1.0},
+        {0.0, 0.0, 0.0, 1e-104, 1e-104, 1e-104},
+        2));
+    check_near(narrow_circle.curvature(5e-105), 1.0, 2e-12,
+               "2D array curvature remains stable on a narrow parameter domain");
+
+    const arr_spline2 wide_circle(spline2(
+        {{1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}},
+        {1.0, root_half, 1.0},
+        {0.0, 0.0, 0.0, 1e104, 1e104, 1e104},
+        2));
+    check_near(wide_circle.curvature(5e103, 0.0), 1.0, 2e-12,
+               "2D array curvature remains stable on a wide parameter domain");
+
+    const auto derivatives = unit_circle.derivatives_at(0.35);
+    const real speed = derivatives.first.length();
+    const real expected =
+        std::abs(derivatives.first.cross(derivatives.second)) /
+        (speed * speed * speed);
+    check_near(unit_circle.curvature(0.35), expected, 2e-15,
+               "2D array curvature uses the analytic derivative magnitude");
+
+    const arr_spline2 stationary(spline2(
+        {{0.0, 0.0}, {0.0, 0.0}, {1.0, 0.0}},
+        {1.0, 1.0, 1.0},
+        {0.0, 0.0, 0.0, 1.0, 1.0, 1.0},
+        2));
+    check(throws_exception<std::domain_error>([&stationary] {
+              static_cast<void>(stationary.curvature(0.0));
+          }) &&
+              throws_exception<std::domain_error>([&line] {
+                  static_cast<void>(line.curvature(5.0, 2.0));
+              }),
+          "2D array curvature rejects stationary and tolerance-small tangents");
+
+    check(throws_exception<std::invalid_argument>([&unit_circle] {
+              static_cast<void>(unit_circle.curvature(0.5, -1.0));
+          }) &&
+              throws_exception<std::invalid_argument>([&unit_circle] {
+                  static_cast<void>(unit_circle.curvature(
+                      0.5, std::numeric_limits<real>::infinity()));
+              }) &&
+              throws_exception<std::invalid_argument>([&unit_circle] {
+                  static_cast<void>(unit_circle.curvature(
+                      0.5, std::numeric_limits<real>::quiet_NaN()));
+              }),
+          "2D array curvature rejects invalid tangent tolerances");
+    check(throws_exception<std::out_of_range>([&unit_circle] {
+              static_cast<void>(unit_circle.curvature(2.0));
+          }),
+          "2D array curvature enforces the active parameter domain");
+
+    arr_spline2 malformed = unit_circle;
+    malformed.parameters = prefix(
+        malformed.parameters, malformed.parameters.size() - 1);
+    check(throws_exception<std::invalid_argument>([&malformed] {
+              static_cast<void>(malformed.curvature(0.5));
+          }),
+          "2D array curvature validates public storage before evaluation");
+}
+
+void test_curvature3() {
+    using namespace test_support;
+
+    const arr_spline3 line(make_line(
+        {-2.0, 3.0, 1.0}, {4.0, -1.0, 5.0}, 2.0, 9.0));
+    check_near(line.curvature(5.0), 0.0, 0.0,
+               "3D array line has zero curvature");
+
+    const real root_half = std::sqrt(0.5);
+    const arr_spline3 unit_circle(spline3(
+        {{1.0, 0.0, 4.0}, {1.0, 1.0, 4.0}, {0.0, 1.0, 4.0}},
+        {1.0, root_half, 1.0},
+        {0.0, 0.0, 0.0, 1.0, 1.0, 1.0},
+        2));
+    for (const real s : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+        check_near(unit_circle.curvature(s), 1.0, 2e-12,
+                   "3D array rational unit circle has unit curvature");
+    }
+
+    const arr_spline3 rescaled_circle(spline3(
+        {{1.0, 0.0, 4.0}, {1.0, 1.0, 4.0}, {0.0, 1.0, 4.0}},
+        {1.0, root_half, 1.0},
+        {2.0, 2.0, 2.0, 8.0, 8.0, 8.0},
+        2));
+    check_near(rescaled_circle.curvature(5.0), unit_circle.curvature(0.5),
+               2e-12,
+               "3D array curvature is invariant under parameter rescaling");
+
+    const arr_spline3 narrow_circle(spline3(
+        {{1.0, 0.0, 4.0}, {1.0, 1.0, 4.0}, {0.0, 1.0, 4.0}},
+        {1.0, root_half, 1.0},
+        {0.0, 0.0, 0.0, 1e-104, 1e-104, 1e-104},
+        2));
+    check_near(narrow_circle.curvature(5e-105), 1.0, 2e-12,
+               "3D array curvature remains stable on a narrow parameter domain");
+
+    const arr_spline3 wide_circle(spline3(
+        {{1.0, 0.0, 4.0}, {1.0, 1.0, 4.0}, {0.0, 1.0, 4.0}},
+        {1.0, root_half, 1.0},
+        {0.0, 0.0, 0.0, 1e104, 1e104, 1e104},
+        2));
+    check_near(wide_circle.curvature(5e103, 0.0), 1.0, 2e-12,
+               "3D array curvature remains stable on a wide parameter domain");
+
+    const auto derivatives = unit_circle.derivatives_at(0.35);
+    const real speed = derivatives.first.length();
+    const real expected = derivatives.first.cross(derivatives.second).length() /
+                          (speed * speed * speed);
+    check_near(unit_circle.curvature(0.35), expected, 2e-15,
+               "3D array curvature uses the analytic derivative magnitude");
+
+    const arr_spline3 stationary(spline3(
+        {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}},
+        {1.0, 1.0, 1.0},
+        {0.0, 0.0, 0.0, 1.0, 1.0, 1.0},
+        2));
+    check(throws_exception<std::domain_error>([&stationary] {
+              static_cast<void>(stationary.curvature(0.0));
+          }) &&
+              throws_exception<std::domain_error>([&line] {
+                  static_cast<void>(line.curvature(5.0, 2.0));
+              }),
+          "3D array curvature rejects stationary and tolerance-small tangents");
+
+    check(throws_exception<std::invalid_argument>([&unit_circle] {
+              static_cast<void>(unit_circle.curvature(0.5, -1.0));
+          }) &&
+              throws_exception<std::invalid_argument>([&unit_circle] {
+                  static_cast<void>(unit_circle.curvature(
+                      0.5, std::numeric_limits<real>::infinity()));
+              }) &&
+              throws_exception<std::invalid_argument>([&unit_circle] {
+                  static_cast<void>(unit_circle.curvature(
+                      0.5, std::numeric_limits<real>::quiet_NaN()));
+              }),
+          "3D array curvature rejects invalid tangent tolerances");
+    check(throws_exception<std::out_of_range>([&unit_circle] {
+              static_cast<void>(unit_circle.curvature(2.0));
+          }),
+          "3D array curvature enforces the active parameter domain");
+
+    arr_spline3 malformed = unit_circle;
+    malformed.parameters = prefix(
+        malformed.parameters, malformed.parameters.size() - 1);
+    check(throws_exception<std::invalid_argument>([&malformed] {
+              static_cast<void>(malformed.curvature(0.5));
+          }),
+          "3D array curvature validates public storage before evaluation");
 }
 
 void test_checked_mutation2() {
@@ -928,7 +1604,8 @@ void test_closed_curves() {
     check(closed2.is_closed(), "2D array spline records closure");
     check_point2(closed2.get_start(), closed2.get_end(), 0.0,
                  "2D array spline computes coincident dynamic endpoints");
-    const arr_spline2 closed2_round_trip(closed2.to_nurbs_spline());
+    const spline2 closed2_ordinary(closed2);
+    const arr_spline2 closed2_round_trip(closed2_ordinary);
     check(closed2_round_trip.is_closed() &&
               closed2_round_trip.tolerance() == closed2.tolerance() &&
               same_values(closed2_round_trip.parameters, closed2.parameters),
@@ -942,8 +1619,11 @@ void test_closed_curves() {
     closed2.parameters[6] = 2.0;
     check(throws_exception<std::invalid_argument>([&closed2] {
               static_cast<void>(closed2.evaluate(1.5));
-          }),
-          "2D geometry validates a directly broken closed seam");
+          }) &&
+              throws_exception<std::invalid_argument>([&closed2] {
+                  static_cast<void>(spline2(closed2));
+              }),
+          "2D geometry and constructor validate a directly broken closed seam");
     closed2.parameters = before2;
 
     arr_spline3 closed3(
@@ -960,7 +1640,8 @@ void test_closed_curves() {
     check(closed3.is_closed(), "3D array spline records closure");
     check_point(closed3.get_start(), closed3.get_end(), 0.0,
                 "3D array spline computes coincident dynamic endpoints");
-    const arr_spline3 closed3_round_trip(closed3.to_nurbs_spline());
+    const spline3 closed3_ordinary(closed3);
+    const arr_spline3 closed3_round_trip(closed3_ordinary);
     check(closed3_round_trip.is_closed() &&
               closed3_round_trip.tolerance() == closed3.tolerance() &&
               same_values(closed3_round_trip.parameters, closed3.parameters),
@@ -974,8 +1655,11 @@ void test_closed_curves() {
     closed3.parameters[9] = 2.0;
     check(throws_exception<std::invalid_argument>([&closed3] {
               static_cast<void>(closed3.to_nurbs_spline());
-          }),
-          "3D conversion validates a directly broken closed seam");
+          }) &&
+              throws_exception<std::invalid_argument>([&closed3] {
+                  static_cast<void>(spline3(closed3));
+              }),
+          "3D conversions validate a directly broken closed seam");
 }
 
 void test_interpolation2() {
@@ -1053,12 +1737,18 @@ void test_interpolation3() {
 } // namespace
 
 int main() {
+    test_standard_constructor2();
+    test_standard_constructor3();
     test_flat_layout2();
     test_flat_layout3();
+    test_pointer_parameters2();
+    test_pointer_parameters3();
     test_validation2();
     test_validation3();
     test_evaluation_and_conversion2();
     test_evaluation_and_conversion3();
+    test_curvature2();
+    test_curvature3();
     test_checked_mutation2();
     test_checked_mutation3();
     test_closed_curves();

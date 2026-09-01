@@ -47,6 +47,14 @@ static_assert(std::same_as<
 static_assert(std::same_as<
               decltype(std::declval<spline3&>().set_parameter(0, real{})),
               bool>);
+static_assert(std::same_as<
+              decltype(std::declval<spline2&>().set_parameters(
+                  std::declval<const real*>())),
+              void>);
+static_assert(std::same_as<
+              decltype(std::declval<spline3&>().set_parameters(
+                  std::declval<const real*>())),
+              void>);
 
 template <typename EXCEPTION, typename FUNCTION>
 bool throws_exception(FUNCTION&& function) {
@@ -117,6 +125,30 @@ void expect_rejected(
         threw = true;
     }
     test_support::check(!threw && !accepted && before.matches(spline), message);
+}
+
+template <typename SPLINE>
+[[nodiscard]] std::vector<real> flatten_parameters(const SPLINE& spline) {
+    std::vector<real> values(spline.number_of_parameters());
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        values[index] = spline.get_parameter(index);
+    }
+    return values;
+}
+
+template <typename SPLINE, std::size_t SIZE>
+[[nodiscard]] bool parameters_match(
+    const SPLINE& spline,
+    const std::array<real, SIZE>& expected) {
+    if (spline.number_of_parameters() != expected.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        if (spline.get_parameter(index) != expected[index]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 [[nodiscard]] spline2 make_open2() {
@@ -311,6 +343,132 @@ void test_successful_updates3() {
           "3D successful scalar edits retain non-parameterized state");
 }
 
+void test_pointer_parameters2() {
+    using namespace test_support;
+
+    spline2 spline = make_open2();
+    const point2<real> before_shape = spline.evaluate(0.75);
+    const std::array<real, 19> replacement{
+        1.0, -1.0, 3.0, 5.0, 6.0, -2.0, 9.0, 4.0,
+        1.5, 2.0, 0.75, 1.25,
+        -2.0, -2.0, -2.0, 1.0, 4.0, 4.0, 4.0};
+    spline.set_parameters(replacement.data());
+
+    check(parameters_match(spline, replacement),
+          "2D pointer setter copies a complete const external buffer");
+    check(spline.get_start() == point2<real>{1.0, -1.0} &&
+              spline.get_end() == point2<real>{9.0, 4.0} &&
+              spline.evaluate(0.75) != before_shape,
+          "2D pointer setter refreshes endpoints and evaluated geometry");
+    check(spline.s_min() == -2.0 && spline.s_max() == 4.0 &&
+              spline.degree() == 2 && !spline.is_closed() &&
+              spline.tolerance() == 1e-9,
+          "2D pointer setter preserves metadata and adopts the new knot domain");
+
+    const spline_snapshot<spline2> before_null(spline);
+    check(throws_exception<std::invalid_argument>([&spline] {
+              spline.set_parameters(static_cast<const real*>(nullptr));
+          }) &&
+              before_null.matches(spline),
+          "2D pointer setter rejects null and leaves all state unchanged");
+
+    std::array<real, 19> invalid = replacement;
+    invalid[8] = 0.0;
+    const spline_snapshot<spline2> before_invalid(spline);
+    check(throws_exception<std::invalid_argument>([&spline, &invalid] {
+              spline.set_parameters(invalid.data());
+          }) &&
+              before_invalid.matches(spline),
+          "2D pointer setter rejects an invalid full candidate atomically");
+
+    spline2 closed{
+        {{0.0, 0.0}, {1.0, 2.0}, {2.0, 1.0}, {0.0, 0.0}},
+        {1.0, 2.0, 3.0, 1.0},
+        {0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0},
+        2,
+        true,
+        1e-9};
+    std::vector<real> closed_replacement = flatten_parameters(closed);
+    closed_replacement[0] = 0.25;
+    closed_replacement[1] = -0.5;
+    closed_replacement[6] = 0.25;
+    closed_replacement[7] = -0.5;
+    const real* const closed_source = closed_replacement.data();
+    closed.set_parameters(closed_source);
+    check(closed.is_closed() && closed.degree() == 2 &&
+              closed.tolerance() == 1e-9 &&
+              closed.get_start() == point2<real>{0.25, -0.5} &&
+              closed.get_end() == point2<real>{0.25, -0.5},
+          "2D pointer setter commits correlated closed-seam coordinates");
+}
+
+void test_pointer_parameters3() {
+    using namespace test_support;
+
+    spline3 spline = make_open3();
+    const point3<real> before_shape = spline.evaluate(0.75);
+    const std::array<real, 23> replacement{
+        1.0, -1.0, 2.0,
+        3.0, 5.0, -3.0,
+        6.0, -2.0, 7.0,
+        9.0, 4.0, 8.0,
+        1.5, 2.0, 0.75, 1.25,
+        -2.0, -2.0, -2.0, 1.0, 4.0, 4.0, 4.0};
+    spline.set_parameters(replacement.data());
+
+    check(parameters_match(spline, replacement),
+          "3D pointer setter copies a complete const external buffer");
+    check(spline.get_start() == point3<real>{1.0, -1.0, 2.0} &&
+              spline.get_end() == point3<real>{9.0, 4.0, 8.0} &&
+              spline.evaluate(0.75) != before_shape,
+          "3D pointer setter refreshes endpoints and evaluated geometry");
+    check(spline.s_min() == -2.0 && spline.s_max() == 4.0 &&
+              spline.degree() == 2 && !spline.is_closed() &&
+              spline.tolerance() == 1e-9,
+          "3D pointer setter preserves metadata and adopts the new knot domain");
+
+    const spline_snapshot<spline3> before_null(spline);
+    check(throws_exception<std::invalid_argument>([&spline] {
+              spline.set_parameters(static_cast<const real*>(nullptr));
+          }) &&
+              before_null.matches(spline),
+          "3D pointer setter rejects null and leaves all state unchanged");
+
+    std::array<real, 23> invalid = replacement;
+    invalid[12] = 0.0;
+    const spline_snapshot<spline3> before_invalid(spline);
+    check(throws_exception<std::invalid_argument>([&spline, &invalid] {
+              spline.set_parameters(invalid.data());
+          }) &&
+              before_invalid.matches(spline),
+          "3D pointer setter rejects an invalid full candidate atomically");
+
+    spline3 closed{
+        {{0.0, 0.0, 0.0},
+         {1.0, 2.0, 3.0},
+         {2.0, 1.0, 2.0},
+         {0.0, 0.0, 0.0}},
+        {1.0, 2.0, 3.0, 1.0},
+        {0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0},
+        2,
+        true,
+        1e-9};
+    std::vector<real> closed_replacement = flatten_parameters(closed);
+    closed_replacement[0] = 0.25;
+    closed_replacement[1] = -0.5;
+    closed_replacement[2] = 0.75;
+    closed_replacement[9] = 0.25;
+    closed_replacement[10] = -0.5;
+    closed_replacement[11] = 0.75;
+    const real* const closed_source = closed_replacement.data();
+    closed.set_parameters(closed_source);
+    check(closed.is_closed() && closed.degree() == 2 &&
+              closed.tolerance() == 1e-9 &&
+              closed.get_start() == point3<real>{0.25, -0.5, 0.75} &&
+              closed.get_end() == point3<real>{0.25, -0.5, 0.75},
+          "3D pointer setter commits correlated closed-seam coordinates");
+}
+
 void test_rejected_updates2() {
     spline2 spline = make_open2();
     const real nan = std::numeric_limits<real>::quiet_NaN();
@@ -484,6 +642,8 @@ int main() {
     test_mapping3();
     test_successful_updates2();
     test_successful_updates3();
+    test_pointer_parameters2();
+    test_pointer_parameters3();
     test_rejected_updates2();
     test_rejected_updates3();
     test_closed_behavior2();

@@ -141,6 +141,35 @@ void test_spline2_mutation() {
               {0.5, 0.0}, 1e-12),
           "2D affine knot rescaling adjusts native-s derivative");
 
+    nurbs_spline2<real> standard_curve(controls, weights, knots, 2);
+    standard_curve.set_standard_knots(4.0);
+    check(standard_curve.get_knots() ==
+              std::vector<real>{0.0, 0.0, 0.0, 4.0, 4.0, 4.0},
+          "2D one-argument standard knots use zero and the requested end");
+    check_near(standard_curve.s_min(), 0.0, 0.0,
+               "2D one-argument standard knots start at zero");
+    check_near(standard_curve.s_max(), 4.0, 0.0,
+               "2D one-argument standard knots use the requested end");
+    check_point2(standard_curve.get_start(), standard_curve.evaluate(0.0),
+                 0.0, "2D standard knots refresh cached start");
+    check_point2(standard_curve.get_end(), standard_curve.evaluate(4.0),
+                 0.0, "2D standard knots refresh cached end");
+
+    standard_curve.set_standard_knots(-2.0, 6.0);
+    check(standard_curve.get_knots() ==
+              std::vector<real>{-2.0, -2.0, -2.0, 6.0, 6.0, 6.0},
+          "2D two-argument standard knots use the requested domain");
+    check_near(standard_curve.s_min(), -2.0, 0.0,
+               "2D two-argument standard knots change the lower bound");
+    check_near(standard_curve.s_max(), 6.0, 0.0,
+               "2D two-argument standard knots change the upper bound");
+    check_point2(standard_curve.get_start(),
+                 standard_curve.evaluate(standard_curve.s_min()), 0.0,
+                 "2D two-argument standard knots keep the start cache current");
+    check_point2(standard_curve.get_end(),
+                 standard_curve.evaluate(standard_curve.s_max()), 0.0,
+                 "2D two-argument standard knots keep the end cache current");
+
     const std::vector<point2<real>> cache_controls{
         {0.0, 0.0}, {2.0, 0.0}, {2.0, 2.0}, {0.0, 2.0}};
     const std::vector<real> cache_weights(4, 1.0);
@@ -309,6 +338,21 @@ void test_spline2_mutation() {
             invalid_curve.set_knots({0.0, 0.0, 0.0, 1.0, 1.0});
         }),
         "2D wrong-sized knot replacement rolls back");
+    unchanged_after(
+        throws_exception<std::invalid_argument>([&invalid_curve] {
+            invalid_curve.set_standard_knots(0.0);
+        }),
+        "2D zero standard-knot domain rolls back");
+    unchanged_after(
+        throws_exception<std::invalid_argument>([&invalid_curve, nan] {
+            invalid_curve.set_standard_knots(nan);
+        }),
+        "2D nonfinite standard-knot end rolls back");
+    unchanged_after(
+        throws_exception<std::invalid_argument>([&invalid_curve] {
+            invalid_curve.set_standard_knots(2.0, 2.0);
+        }),
+        "2D empty two-bound standard-knot domain rolls back");
     unchanged_after(
         throws_exception<std::invalid_argument>([&invalid_curve] {
             invalid_curve.set_tolerance(0.0);

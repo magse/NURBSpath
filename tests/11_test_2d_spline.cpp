@@ -3,12 +3,163 @@
 #include "test_support.hpp"
 
 #include <cmath>
+#include <cstddef>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <vector>
 
 int main() {
     using namespace test_support;
+
+    const auto throws_invalid_argument = [](const auto& operation) {
+        try {
+            operation();
+        } catch (const std::invalid_argument&) {
+            return true;
+        }
+        return false;
+    };
+    const auto throws_overflow_error = [](const auto& operation) {
+        try {
+            operation();
+        } catch (const std::overflow_error&) {
+            return true;
+        }
+        return false;
+    };
+    const auto throws_domain_error = [](const auto& operation) {
+        try {
+            operation();
+        } catch (const std::domain_error&) {
+            return true;
+        }
+        return false;
+    };
+
+    const point2<real> standard_start{-1.0, 2.0};
+    const point2<real> standard_end{3.0, 5.0};
+    constexpr std::size_t standard_control_count = 5;
+    constexpr std::size_t standard_degree = 2;
+    constexpr real standard_tolerance = 2e-10;
+    const real standard_distance = distance(standard_start, standard_end);
+    const nurbs_spline2<real> standard_spline(
+        standard_start,
+        standard_end,
+        standard_control_count,
+        standard_degree,
+        false,
+        standard_tolerance);
+    const nurbs_spline2<real> defaulted_standard_spline(
+        standard_start,
+        standard_end,
+        standard_control_count,
+        standard_degree);
+
+    check(!defaulted_standard_spline.is_closed() &&
+              defaulted_standard_spline.tolerance() ==
+                  real(64) * std::numeric_limits<real>::epsilon(),
+          "standard 2D constructor defaults closure and tolerance");
+
+    check(standard_spline.get_control_points().size() ==
+                  standard_control_count &&
+              standard_spline.get_weights().size() == standard_control_count &&
+              standard_spline.degree() == standard_degree &&
+              !standard_spline.is_closed() &&
+              standard_spline.tolerance() == standard_tolerance,
+          "standard 2D constructor preserves counts and open metadata");
+    for (std::size_t index = 0; index < standard_control_count; ++index) {
+        const real fraction = static_cast<real>(index) /
+            static_cast<real>(standard_control_count - 1);
+        check_point2(
+            standard_spline.get_control_point(index),
+            lerp(standard_start, standard_end, fraction),
+            0.0,
+            "standard 2D constructor uses exact point lerp controls");
+        check(standard_spline.get_weight(index) == 1.0,
+              "standard 2D constructor uses unit weights");
+    }
+    const std::vector<real> standard_knots{
+        0.0,
+        0.0,
+        0.0,
+        standard_distance / 3.0,
+        2.0 * standard_distance / 3.0,
+        standard_distance,
+        standard_distance,
+        standard_distance};
+    check(standard_spline.get_knots().size() == standard_knots.size(),
+          "standard 2D constructor creates the required knot count");
+    for (std::size_t index = 0; index < standard_knots.size(); ++index) {
+        check_near(
+            standard_spline.get_knot(index),
+            standard_knots[index],
+            1e-14,
+            "standard 2D constructor creates standard distance knots");
+    }
+    check_near(standard_spline.s_min(), 0.0, 0.0,
+               "standard 2D constructor starts its domain at zero");
+    check_near(standard_spline.s_max(), standard_distance, 0.0,
+               "standard 2D constructor ends its domain at point distance");
+    check_point2(standard_spline.get_start(), standard_start, 0.0,
+                 "standard 2D constructor caches its first endpoint");
+    check_point2(standard_spline.get_end(), standard_end, 1e-14,
+                 "standard 2D constructor caches its second endpoint");
+    check_point2(
+        standard_spline.get_start(),
+        standard_spline.evaluate(standard_spline.s_min()),
+        0.0,
+        "standard 2D constructor start cache matches evaluation");
+    check_point2(
+        standard_spline.get_end(),
+        standard_spline.evaluate(standard_spline.s_max()),
+        0.0,
+        "standard 2D constructor end cache matches evaluation");
+
+    constexpr float converted_standard_tolerance = 3e-6F;
+    const nurbs_spline2<real> standard_tolerance_overload(
+        standard_start,
+        standard_end,
+        standard_control_count,
+        standard_degree,
+        converted_standard_tolerance);
+    check(!standard_tolerance_overload.is_closed() &&
+              standard_tolerance_overload.tolerance() ==
+                  static_cast<real>(converted_standard_tolerance),
+          "standard 2D numeric argument selects tolerance, not closure");
+
+    check(throws_invalid_argument([&] {
+              static_cast<void>(
+                  nurbs_spline2<real>(standard_start, standard_end, 2, 2));
+          }),
+          "standard 2D constructor rejects a count not above degree");
+    check(throws_invalid_argument([&] {
+              static_cast<void>(
+                  nurbs_spline2<real>(standard_start, standard_end, 3, 0));
+          }),
+          "standard 2D constructor rejects degree zero");
+    check(throws_invalid_argument([&] {
+              static_cast<void>(
+                  nurbs_spline2<real>(standard_start, standard_start, 3, 2));
+          }),
+          "standard 2D constructor rejects a zero-distance knot domain");
+    check(throws_overflow_error([&] {
+              static_cast<void>(nurbs_spline2<real>(
+                  standard_start,
+                  standard_end,
+                  std::numeric_limits<std::size_t>::max(),
+                  1));
+          }),
+          "standard 2D constructor rejects knot-count overflow before allocation");
+    check(throws_invalid_argument([&] {
+              static_cast<void>(nurbs_spline2<real>(
+                  standard_start,
+                  standard_end,
+                  standard_control_count,
+                  standard_degree,
+                  true));
+          }),
+          "standard 2D constructor rejects a distinct closed seam");
 
     const auto line = make_line2({1.0, -2.0}, {5.0, 4.0}, 2.0, 6.0);
     check_point2(line.evaluate(4.0), {3.0, 1.0}, 1e-12,
@@ -19,6 +170,21 @@ int main() {
           "2D line analytic second derivative");
     check(line.third_derivative(4.0).is_near_zero(1e-12),
           "unit-weight 2D line analytic third derivative");
+    check_near(line.curvature(4.0), 0.0, 0.0,
+               "2D line spline has zero curvature");
+    check(throws_invalid_argument([&] {
+              static_cast<void>(line.curvature(4.0, -1.0));
+          }) &&
+              throws_invalid_argument([&] {
+                  static_cast<void>(line.curvature(
+                      4.0, std::numeric_limits<real>::infinity()));
+              }),
+          "2D curvature rejects invalid tangent tolerances");
+    const real line_speed = line.first_derivative(4.0).length();
+    check(throws_domain_error([&] {
+              static_cast<void>(line.curvature(4.0, line_speed));
+          }),
+          "2D curvature rejects speed equal to its tangent tolerance");
     check_near(line.approximate_arc_length(32), std::sqrt(52.0), 1e-11,
                "2D line approximate arc length");
     check(!line.is_closed(), "ordinary 2D spline is open");
@@ -26,6 +192,16 @@ int main() {
                  "2D start getter returns cached domain start");
     check_point2(line.get_end(), line.evaluate(line.s_max()), 0.0,
                  "2D end getter returns cached domain end");
+
+    const nurbs_spline2<real> stationary(
+        {{2.0, 3.0}, {2.0, 3.0}},
+        {1.0, 1.0},
+        {0.0, 0.0, 1.0, 1.0},
+        1);
+    check(throws_domain_error([&] {
+              static_cast<void>(stationary.curvature(0.5));
+          }),
+          "2D curvature rejects a stationary spline point");
 
     const std::vector<point2<real>> samples{
         {0.0, 0.0}, {1.0, 0.4}, {2.0, 1.2}, {3.0, 1.0}, {4.0, 0.0}};
@@ -52,6 +228,42 @@ int main() {
     check_near(quarter_circle.tangent(0.5).dot(middle - point2<real>::origin()),
                0.0, 1e-12,
                "2D circle spline tangent is radial-orthogonal");
+    check_near(quarter_circle.curvature(0.5), 1.0, 1e-12,
+               "rational 2D unit circle has unit curvature");
+
+    constexpr real narrow_domain_end = 1e-104;
+    const nurbs_spline2<real> narrow_quarter_circle(
+        quarter_circle.get_control_points(),
+        quarter_circle.get_weights(),
+        {0.0,
+         0.0,
+         0.0,
+         narrow_domain_end,
+         narrow_domain_end,
+         narrow_domain_end},
+        2);
+    check_near(
+        narrow_quarter_circle.curvature(narrow_domain_end / 2.0),
+        1.0,
+        1e-11,
+        "2D curvature remains stable on a narrow native parameter domain");
+
+    constexpr real wide_domain_end = 1e104;
+    const nurbs_spline2<real> wide_quarter_circle(
+        quarter_circle.get_control_points(),
+        quarter_circle.get_weights(),
+        {0.0,
+         0.0,
+         0.0,
+         wide_domain_end,
+         wide_domain_end,
+         wide_domain_end},
+        2);
+    check_near(
+        wide_quarter_circle.curvature(wide_domain_end / 2.0, 0.0),
+        1.0,
+        1e-11,
+        "2D curvature remains stable on a wide native parameter domain");
 
     const nurbs_spline2<real> unit_cubic(
         {{0.0, 0.0}, {1.0, 0.0}, {1.0, 2.0}, {4.0, 3.0}},
