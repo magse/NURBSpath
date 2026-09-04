@@ -782,6 +782,26 @@ public:
     }
 
     /**
+     * @brief Get the total length of the 2D control polygon.
+     *
+     * The result is the sum of Euclidean distances between consecutive
+     * control points. No additional last-to-first segment is inserted. This
+     * is an exact length for the stored control polygonal chain and a simple
+     * estimate of the spline's arc length; weights, knots, and sampling do not
+     * affect it.
+     *
+     * @return Control-polygon length in 2D world units.
+     */
+    [[nodiscard]] REAL get_polygon_length() const noexcept {
+        REAL length = REAL(0);
+        for (std::size_t index = 1; index < control_points_.size(); ++index) {
+            length +=
+                distance(control_points_[index - 1], control_points_[index]);
+        }
+        return length;
+    }
+
+    /**
      * @brief Estimate 2D arc length using a uniform-s polyline.
      * @param segment_count Positive number of straight approximation segments.
      * @return Approximate length in 2D world units.

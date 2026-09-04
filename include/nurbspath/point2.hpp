@@ -36,6 +36,21 @@ struct point2 {
     [[nodiscard]] constexpr bool operator==(const point2& other) const noexcept = default;
 
     /**
+     * @brief Replace this point's coordinates with vector components.
+     * @tparam VECTOR Exactly `vector2<REAL>`; the template form keeps
+     * brace-list assignment to `point2` unambiguous.
+     * @param vector_value Vector whose components become this point's coordinates.
+     * @return Reference to this updated point.
+     */
+    template <typename VECTOR>
+        requires std::same_as<VECTOR, vector2<REAL>>
+    constexpr point2& operator=(const VECTOR& vector_value) noexcept {
+        x = vector_value.x;
+        y = vector_value.y;
+        return *this;
+    }
+
+    /**
      * @brief Write the coordinates in CSV, TSV, or whitespace-delimited text.
      * @param output Destination text stream.
      * @param format Delimited text format; CSV is the default.
@@ -178,6 +193,10 @@ struct point2 {
     /** @brief Construct the Cartesian 2D origin. @return `(0,0)`. */
     [[nodiscard]] static constexpr point2 origin() noexcept { return {}; }
 };
+
+template <std::floating_point REAL>
+constexpr vector2<REAL>::vector2(const point2<REAL>& point_value) noexcept
+    : x(point_value.x), y(point_value.y) {}
 
 /**
  * @brief Write a 2D point as whitespace-separated X and Y coordinates.

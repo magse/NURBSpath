@@ -47,6 +47,16 @@ public:
     [[nodiscard]] REAL radius() const noexcept { return radius_; }
 
     /**
+     * @brief Replace the center with vector components while preserving radius.
+     * @param center_vector Source center coordinates in the 3D world.
+     * @return Reference to this updated sphere.
+     */
+    sphere3& operator=(const vector3<REAL>& center_vector) noexcept {
+        center_ = center_vector;
+        return *this;
+    }
+
+    /**
      * @brief Write one version-1 tagged `sphere3` text record.
      *
      * The row contains the decimal tag, `sphere3` and `v1` tokens, then the
@@ -151,6 +161,12 @@ private:
     point3<REAL> center_;
     REAL radius_;
 };
+
+template <std::floating_point REAL>
+vector3<REAL>::vector3(const sphere3<REAL>& sphere_value) noexcept
+    : x(sphere_value.center().x),
+      y(sphere_value.center().y),
+      z(sphere_value.center().z) {}
 
 namespace detail {
 

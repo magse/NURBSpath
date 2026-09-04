@@ -40,6 +40,16 @@ public:
     [[nodiscard]] REAL radius() const noexcept { return radius_; }
 
     /**
+     * @brief Replace the center using vector components while preserving the radius.
+     * @param center_value Vector whose components become the center coordinates.
+     * @return Reference to this circle.
+     */
+    circle2& operator=(const vector2<REAL>& center_value) noexcept {
+        center_ = center_value;
+        return *this;
+    }
+
+    /**
      * @brief Evaluate the circle parameterization.
      * @param u Counterclockwise angle in radians.
      * @return Point on the circle in the 2D world.
@@ -87,5 +97,9 @@ private:
     point2<REAL> center_;
     REAL radius_;
 };
+
+template <std::floating_point REAL>
+inline vector2<REAL>::vector2(const circle2<REAL>& circle_value) noexcept
+    : vector2(circle_value.center()) {}
 
 } // namespace nurbspath

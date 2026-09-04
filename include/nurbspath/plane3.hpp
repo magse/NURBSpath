@@ -159,4 +159,10 @@ private:
     vector3<REAL> v_direction_;
 };
 
+template <std::floating_point REAL>
+vector3<REAL>::vector3(const plane3<REAL>& plane_value) noexcept
+    : x(plane_value.origin().x),
+      y(plane_value.origin().y),
+      z(plane_value.origin().z) {}
+
 } // namespace nurbspath

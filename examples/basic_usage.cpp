@@ -28,7 +28,7 @@ int main() {
               << sample.point.y << ", "
               << sample.point.z << ")\n";
 
-    const vector3<real> ground_normal{.x = 0.0, .y = 0.0, .z = 1.0};
+    const vector3<real> ground_normal{0.0, 0.0, 1.0};
     const nurbspath::plane3<real> ground(
         {0.0, 0.0, 0.0}, ground_normal);
     const auto contacts = nurbspath::intersect_spline_plane(path, ground);

@@ -36,6 +36,9 @@ int main() {
     auto ray_2d_from_points =
         nurbspath::make_ray2_from_points(*point_2d, through_point_2d);
     auto circle_2d = nurbspath::make_circle2(*point_2d, 2.5);
+    auto vector_from_point_2d = nurbspath::make_vector2(*point_2d);
+    auto vector_from_circle_2d = nurbspath::make_vector2(*circle_2d);
+    auto vector_from_ray_2d = nurbspath::make_vector2(*ray_2d);
     auto spline_2d = nurbspath::make_nurbs_spline2<real>(
         {{0.0, 0.0}, {2.0, 1.0}},
         {1.0, 1.0},
@@ -152,6 +155,12 @@ int main() {
     static_assert(std::is_same_v<
         decltype(circle_2d), std::shared_ptr<circle2<real>>>);
     static_assert(std::is_same_v<
+        decltype(vector_from_point_2d), std::shared_ptr<vector2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(vector_from_circle_2d), std::shared_ptr<vector2<real>>>);
+    static_assert(std::is_same_v<
+        decltype(vector_from_ray_2d), std::shared_ptr<vector2<real>>>);
+    static_assert(std::is_same_v<
         decltype(spline_2d), std::shared_ptr<nurbs_spline2<real>>>);
     static_assert(std::is_same_v<
         decltype(closed_spline_2d), std::shared_ptr<nurbs_spline2<real>>>);
@@ -210,6 +219,12 @@ int main() {
     check_point2(ray_2d_from_points->evaluate(1.0), through_point_2d, 1e-12,
                  "make_ray2_from_points reaches the second point at s=1");
     check_near(circle_2d->radius(), 2.5, 0.0, "make_circle2 value");
+    check(*vector_from_point_2d == vector2<real>{1.0, -2.0},
+          "make_vector2(point2) copies point coordinates");
+    check(*vector_from_circle_2d == vector2<real>{1.0, -2.0},
+          "make_vector2(circle2) uses the circle center");
+    check(*vector_from_ray_2d == vector2<real>{1.0, -2.0},
+          "make_vector2(ray2) uses the ray origin");
     check_point2(spline_2d->evaluate(6.0), {1.0, 0.5}, 1e-12,
                  "make_nurbs_spline2 value");
     check_point2(valarray_spline_2d->evaluate(6.0), {1.0, 0.5}, 1e-12,
@@ -343,6 +358,10 @@ int main() {
         frame_origin,
         vector3<real>{0.0, 0.0, 4.0},
         point3<real>{1.0, 5.0, 5.0});
+    auto vector_from_point_3d = nurbspath::make_vector3(*point_3d);
+    auto vector_from_sphere_3d = nurbspath::make_vector3(*sphere_3d);
+    auto vector_from_plane_3d = nurbspath::make_vector3(*origin_plane);
+    auto vector_from_ray_3d = nurbspath::make_vector3(*ray_3d);
     auto spline_3d = nurbspath::make_nurbs_spline3<real>(
         {{0.0, 0.0, 0.0}, {2.0, 4.0, 6.0}},
         {1.0, 1.0},
@@ -477,6 +496,14 @@ int main() {
     static_assert(std::is_same_v<
         decltype(u_direction_plane), std::shared_ptr<plane3<real>>>);
     static_assert(std::is_same_v<
+        decltype(vector_from_point_3d), std::shared_ptr<vector3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(vector_from_sphere_3d), std::shared_ptr<vector3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(vector_from_plane_3d), std::shared_ptr<vector3<real>>>);
+    static_assert(std::is_same_v<
+        decltype(vector_from_ray_3d), std::shared_ptr<vector3<real>>>);
+    static_assert(std::is_same_v<
         decltype(spline_3d), std::shared_ptr<nurbs_spline3<real>>>);
     static_assert(std::is_same_v<
         decltype(closed_spline_3d), std::shared_ptr<nurbs_spline3<real>>>);
@@ -535,6 +562,14 @@ int main() {
     check_point(ray_3d_from_points->evaluate(1.0), through_point_3d, 1e-12,
                 "make_ray3_from_points reaches the second point at s=1");
     check_near(sphere_3d->radius(), 1.5, 0.0, "make_sphere3 value");
+    check(*vector_from_point_3d == vector3<real>{2.0, -1.0, 3.0},
+          "make_vector3(point3) copies point coordinates");
+    check(*vector_from_sphere_3d == vector3<real>{2.0, -1.0, 3.0},
+          "make_vector3(sphere3) uses the sphere center");
+    check(*vector_from_plane_3d == vector3<real>{1.0, 2.0, 3.0},
+          "make_vector3(plane3) uses the plane origin");
+    check(*vector_from_ray_3d == vector3<real>{2.0, -1.0, 3.0},
+          "make_vector3(ray3) uses the ray origin");
     check_near(hessian_plane->signed_distance_from_origin(), 3.0, 1e-12,
                "make_plane3 Hessian overload");
     check_point(origin_plane->origin(), {1.0, 2.0, 3.0}, 1e-12,

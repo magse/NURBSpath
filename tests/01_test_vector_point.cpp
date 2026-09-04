@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 int main() {
     using namespace test_support;
@@ -34,7 +35,26 @@ int main() {
     check(point3<real>::origin().manhattan_distance() == 0.0,
           "3D origin has zero Manhattan distance");
 
-    static_assert(std::is_aggregate_v<vector3<real>>);
+    static_assert(!std::is_aggregate_v<vector3<real>>);
+    static_assert(std::is_nothrow_default_constructible_v<vector3<real>>);
+    static_assert(std::is_nothrow_constructible_v<
+                  vector3<real>, real, real, real>);
+    static_assert(std::is_constructible_v<vector3<real>, const point3<real>&>);
+    static_assert(std::is_nothrow_constructible_v<
+                  vector3<real>, const point3<real>&>);
+    static_assert(!std::is_convertible_v<const point3<real>&, vector3<real>>);
+    static_assert(!std::is_constructible_v<
+                  vector3<real>, const point3<float>&>);
+    static_assert(std::is_assignable_v<point3<real>&, const vector3<real>&>);
+    static_assert(std::is_nothrow_assignable_v<
+                  point3<real>&, const vector3<real>&>);
+    static_assert(!std::is_assignable_v<
+                  point3<real>&, const vector3<float>&>);
+    static_assert(std::is_same_v<
+                  decltype(std::declval<point3<real>&>() =
+                           std::declval<const vector3<real>&>()),
+                  point3<real>&>);
+    static_assert(std::is_copy_assignable_v<point3<real>>);
     vector3<real> components{};
     check(components.x == 0.0 && components.y == 0.0 && components.z == 0.0,
           "default 3D vector components are zero");
@@ -44,8 +64,21 @@ int main() {
     check(components == vector3<real>{-1.0, 2.0, 3.0},
           "3D vector components are public and mutable");
 
-    const vector3<real> x{.x = 1.0, .y = 0.0, .z = 0.0};
-    const vector3<real> y{.x = 0.0, .y = 2.0, .z = 0.0};
+    constexpr point3<real> position_as_vector_source{4.0, -5.0, 6.0};
+    constexpr vector3<real> position_as_vector(position_as_vector_source);
+    static_assert(position_as_vector == vector3<real>{4.0, -5.0, 6.0});
+    point3<real> assigned_position{};
+    const vector3<real> assigned_components{-7.0, 8.0, -9.0};
+    point3<real>& assignment_result = assigned_position = assigned_components;
+    check(&assignment_result == &assigned_position &&
+              assigned_position == point3<real>{-7.0, 8.0, -9.0},
+          "3D point assignment copies vector components and returns the point");
+    assigned_position = {1.0, 2.0, 3.0};
+    check(assigned_position == point3<real>{1.0, 2.0, 3.0},
+          "3D point assignment from coordinate braces remains unambiguous");
+
+    const vector3<real> x{1.0, 0.0, 0.0};
+    const vector3<real> y{0.0, 2.0, 0.0};
     check_point(point3<real>{1.0, 2.0, 3.0} + x,
                 {2.0, 2.0, 3.0}, 1e-12, "point plus vector");
     check(x.cross(y).approximately_equal({0.0, 0.0, 2.0}, 1e-12),

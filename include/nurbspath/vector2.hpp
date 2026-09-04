@@ -15,13 +15,22 @@
 
 namespace nurbspath {
 
+template <std::floating_point REAL>
+struct point2;
+
+template <std::floating_point REAL>
+class circle2;
+
+template <std::floating_point REAL>
+class ray2;
+
 /**
  * @brief Cartesian vector in the independent two-dimensional world.
  *
  * A vector is an offset or direction, not a position. It has no implicit
  * relationship to `vector3`; use `project(plane, vector)` to embed it in a
- * selected three-dimensional plane frame. Its components are public,
- * zero-initialized aggregate members.
+ * selected three-dimensional plane frame. Its components are public and are
+ * zero-initialized by the default constructor.
  *
  * @tparam REAL Floating-point scalar type.
  */
@@ -31,6 +40,35 @@ struct vector2 {
 
     REAL x = REAL(0); ///< X component in the 2D world.
     REAL y = REAL(0); ///< Y component in the 2D world.
+
+    /** @brief Construct the zero vector. */
+    constexpr vector2() noexcept = default;
+
+    /**
+     * @brief Construct a vector from Cartesian components.
+     * @param x_value X component in the 2D world.
+     * @param y_value Y component in the 2D world.
+     */
+    constexpr vector2(REAL x_value, REAL y_value) noexcept
+        : x(x_value), y(y_value) {}
+
+    /**
+     * @brief Construct the displacement from the 2D origin to a point.
+     * @param point_value Point whose coordinates become the vector components.
+     */
+    explicit constexpr vector2(const point2<REAL>& point_value) noexcept;
+
+    /**
+     * @brief Construct the displacement from the 2D origin to a circle center.
+     * @param circle_value Circle whose center supplies the vector components.
+     */
+    explicit vector2(const circle2<REAL>& circle_value) noexcept;
+
+    /**
+     * @brief Construct the displacement from the 2D origin to a ray origin.
+     * @param ray_value Ray whose origin supplies the vector components.
+     */
+    explicit vector2(const ray2<REAL>& ray_value) noexcept;
 
     /**
      * @brief Compare components exactly.

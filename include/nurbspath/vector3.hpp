@@ -17,12 +17,24 @@
 
 namespace nurbspath {
 
+template <std::floating_point REAL>
+struct point3;
+
+template <std::floating_point REAL>
+class sphere3;
+
+template <std::floating_point REAL>
+class plane3;
+
+template <std::floating_point REAL>
+class ray3;
+
 /**
  * @brief Cartesian three-dimensional vector.
  *
  * The type deliberately models a vector rather than a position. Keeping
  * vectors and points separate prevents nonsensical position operations. Its
- * components are public, zero-initialized aggregate members.
+ * components are public and are zero-initialized by the default constructor.
  *
  * @tparam REAL Floating-point scalar type.
  */
@@ -33,6 +45,42 @@ struct vector3 {
     REAL x = REAL(0); ///< X component.
     REAL y = REAL(0); ///< Y component.
     REAL z = REAL(0); ///< Z component.
+
+    /** @brief Construct the zero vector. */
+    constexpr vector3() noexcept = default;
+
+    /**
+     * @brief Construct a vector from X, Y, and Z components.
+     * @param x_value X component in the 3D world.
+     * @param y_value Y component in the 3D world.
+     * @param z_value Z component in the 3D world.
+     */
+    constexpr vector3(REAL x_value, REAL y_value, REAL z_value) noexcept
+        : x(x_value), y(y_value), z(z_value) {}
+
+    /**
+     * @brief Construct a vector containing a point's coordinates.
+     * @param point_value Source point in the 3D world.
+     */
+    explicit constexpr vector3(const point3<REAL>& point_value) noexcept;
+
+    /**
+     * @brief Construct a vector containing a sphere center's coordinates.
+     * @param sphere_value Source sphere in the 3D world.
+     */
+    explicit vector3(const sphere3<REAL>& sphere_value) noexcept;
+
+    /**
+     * @brief Construct a vector containing a plane origin's coordinates.
+     * @param plane_value Source plane in the 3D world.
+     */
+    explicit vector3(const plane3<REAL>& plane_value) noexcept;
+
+    /**
+     * @brief Construct a vector containing a ray origin's coordinates.
+     * @param ray_value Source ray in the 3D world.
+     */
+    explicit vector3(const ray3<REAL>& ray_value) noexcept;
 
     /**
      * @brief Compare components exactly.

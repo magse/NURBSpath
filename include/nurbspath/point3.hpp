@@ -40,6 +40,22 @@ struct point3 {
     [[nodiscard]] constexpr bool operator==(const point3& other) const noexcept = default;
 
     /**
+     * @brief Replace this point's coordinates with vector components.
+     * @tparam VECTOR Exactly `vector3<REAL>`; the template form keeps
+     * brace-list assignment to `point3` unambiguous.
+     * @param vector Source vector in the 3D world.
+     * @return Reference to this updated point.
+     */
+    template <typename VECTOR>
+        requires std::same_as<VECTOR, vector3<REAL>>
+    constexpr point3& operator=(const VECTOR& vector) noexcept {
+        x = vector.x;
+        y = vector.y;
+        z = vector.z;
+        return *this;
+    }
+
+    /**
      * @brief Write the coordinates in CSV, TSV, or whitespace-delimited text.
      * @param output Destination text stream.
      * @param format Delimited text format; CSV is the default.
@@ -228,6 +244,10 @@ struct point3 {
     /** @brief Construct the Cartesian world origin. @return (0,0,0). */
     [[nodiscard]] static constexpr point3 origin() noexcept { return {}; }
 };
+
+template <std::floating_point REAL>
+constexpr vector3<REAL>::vector3(const point3<REAL>& point_value) noexcept
+    : x(point_value.x), y(point_value.y), z(point_value.z) {}
 
 namespace detail {
 

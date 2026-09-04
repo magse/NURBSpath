@@ -70,6 +70,42 @@ template <std::floating_point REAL>
 }
 
 /**
+ * @brief Allocate a 2D vector from a point with shared ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param point_value Point whose coordinates become the vector components.
+ * @return Shared smart pointer owning the new vector.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<vector2<REAL>> make_vector2(
+    const point2<REAL>& point_value) {
+    return std::make_shared<vector2<REAL>>(point_value);
+}
+
+/**
+ * @brief Allocate a 2D vector from a circle center with shared ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param circle_value Circle whose center supplies the vector components.
+ * @return Shared smart pointer owning the new vector.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<vector2<REAL>> make_vector2(
+    const circle2<REAL>& circle_value) {
+    return std::make_shared<vector2<REAL>>(circle_value);
+}
+
+/**
+ * @brief Allocate a 2D vector from a ray origin with shared ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param ray_value Ray whose origin supplies the vector components.
+ * @return Shared smart pointer owning the new vector.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<vector2<REAL>> make_vector2(
+    const ray2<REAL>& ray_value) {
+    return std::make_shared<vector2<REAL>>(ray_value);
+}
+
+/**
  * @brief Allocate the 2D origin with shared ownership.
  * @tparam REAL Floating-point scalar type.
  * @return Shared smart pointer owning the new point.
@@ -544,6 +580,54 @@ template <std::floating_point REAL>
     REAL y,
     REAL z) {
     return std::make_shared<vector3<REAL>>(vector3<REAL>{x, y, z});
+}
+
+/**
+ * @brief Allocate a 3D vector from a point with shared ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param point_value Point whose coordinates become the vector components.
+ * @return Shared smart pointer owning the new vector.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<vector3<REAL>> make_vector3(
+    const point3<REAL>& point_value) {
+    return std::make_shared<vector3<REAL>>(point_value);
+}
+
+/**
+ * @brief Allocate a 3D vector from a sphere center with shared ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param sphere_value Sphere whose center supplies the vector components.
+ * @return Shared smart pointer owning the new vector.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<vector3<REAL>> make_vector3(
+    const sphere3<REAL>& sphere_value) {
+    return std::make_shared<vector3<REAL>>(sphere_value);
+}
+
+/**
+ * @brief Allocate a 3D vector from a plane origin with shared ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param plane_value Plane whose origin supplies the vector components.
+ * @return Shared smart pointer owning the new vector.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<vector3<REAL>> make_vector3(
+    const plane3<REAL>& plane_value) {
+    return std::make_shared<vector3<REAL>>(plane_value);
+}
+
+/**
+ * @brief Allocate a 3D vector from a ray origin with shared ownership.
+ * @tparam REAL Floating-point scalar type.
+ * @param ray_value Ray whose origin supplies the vector components.
+ * @return Shared smart pointer owning the new vector.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::shared_ptr<vector3<REAL>> make_vector3(
+    const ray3<REAL>& ray_value) {
+    return std::make_shared<vector3<REAL>>(ray_value);
 }
 
 /**

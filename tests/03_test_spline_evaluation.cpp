@@ -102,6 +102,8 @@ int main() {
                "standard 3D constructor starts its domain at zero");
     check_near(standard_spline.s_max(), standard_distance, 0.0,
                "standard 3D constructor ends its domain at point distance");
+    check_near(standard_spline.get_polygon_length(), standard_distance, 1e-14,
+               "standard 3D constructor has endpoint-distance control polygon");
     check_point(standard_spline.get_start(), standard_start, 0.0,
                 "standard 3D constructor caches its first endpoint");
     check_point(standard_spline.get_end(), standard_end, 1e-14,
@@ -208,6 +210,8 @@ int main() {
         {1.0, root_half, 1.0},
         {0.0, 0.0, 0.0, 1.0, 1.0, 1.0},
         2);
+    check_near(quarter_circle.get_polygon_length(), 2.0, 0.0,
+               "3D quarter circle control polygon has two unit sides");
     check_point(quarter_circle.evaluate(0.5), {root_half, root_half, 0.0}, 1e-11,
                 "rational quarter circle evaluation");
     check_near(quarter_circle.curvature(0.5), 1.0, 1e-11,

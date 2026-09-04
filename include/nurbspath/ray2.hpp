@@ -67,4 +67,8 @@ private:
     vector2<REAL> direction_;
 };
 
+template <std::floating_point REAL>
+inline vector2<REAL>::vector2(const ray2<REAL>& ray_value) noexcept
+    : vector2(ray_value.origin()) {}
+
 } // namespace nurbspath

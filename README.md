@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.4.0 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.4.1 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -344,6 +344,15 @@ recomputed from the current array. `get_control_point(i)` reconstructs and
 returns a `point2` or `point3` value; scalar array elements are never
 reinterpreted as live point objects. `get_weight(i)` and `get_knot(i)` provide
 the corresponding scalar access.
+
+All four spline types provide `get_polygon_length()`. It sums the Euclidean
+distances between each pair of consecutive control points and does not add an
+implicit edge from the final control point back to the first. A closed
+definition therefore includes its closing side only when that side is present
+in the stored control-point sequence, as it normally is through the coincident
+seam endpoints. The result is independent of weights, knots, and sampling. It
+is a simple control-polygon estimate of curve length, distinct from
+`approximate_arc_length()`, which samples the evaluated spline.
 
 Both ordinary spline dimensions expose selected numeric definition data
 through `number_of_parameters()`,
@@ -862,16 +871,21 @@ domain.
 
 ## Public API summary
 
-`vector2<REAL>` is an aggregate with public `x` and `y` components that default
-to zero. It mirrors the applicable vector operations in two dimensions and adds
-a zero-argument `normalize()` operation for in-place unit normalization, a
-signed scalar `cross`, left/right perpendicular vectors, and `signed_angle_to`.
-`point2<REAL>` is likewise an aggregate with public,
-zero-defaulted `x` and `y` coordinates. It preserves the point-versus-vector
-type boundary and provides `magnitude()` as Euclidean distance and
-`manhattan_distance()` as L1 distance from the 2D origin.
-`ray2<REAL>` uses forward parameter `s`, and `circle2<REAL>` provides
-`point_at(u)`, `normal_at`, and `parameter_of`.
+`vector2<REAL>` is a non-aggregate value type with public `x` and `y` components
+that default to zero. Positional component initialization such as `{x, y}`
+remains available; designated aggregate initialization is not. It mirrors the
+applicable vector operations in two dimensions and adds a zero-argument
+`normalize()` operation for in-place unit normalization, a signed scalar
+`cross`, left/right perpendicular vectors, and `signed_angle_to`.
+Its explicit entity constructors form the displacement from the 2D origin to a
+`point2`, a `circle2` center, or a `ray2` origin. `point2<REAL>` remains an
+aggregate with public, zero-defaulted `x` and `y` coordinates. Assigning a
+`vector2<REAL>` to a `point2<REAL>` places the point at the vector's head when
+its tail is the 2D origin. Assigning one to a `circle2<REAL>` moves the circle's
+center to that position while preserving its radius. `point2` also provides
+`magnitude()` as Euclidean distance and `manhattan_distance()` as L1 distance
+from the 2D origin. `ray2<REAL>` uses forward parameter `s`, and `circle2<REAL>`
+provides `point_at(u)`, `normal_at`, and `parameter_of`.
 
 `point2`, `vector2`, `point3`, and `vector3` support stream insertion and
 extraction with `operator<<` and `operator>>`. Their text format is
@@ -944,10 +958,14 @@ rules as their 3D counterparts. Its scalar definition view is exposed through
 `set_parameter`, using point-major x/y coordinates followed by weights and
 knots; degree, closure, and tolerance are excluded.
 
-`vector3<REAL>` is an aggregate with public `x`, `y`, and `z` components that
-default to zero. It also provides indexed access, exact equality, unary signs,
-vector addition/subtraction, scalar multiplication/division, `dot`, `cross`,
-`length`, `length_squared`, `normalize`, `normalized`, `is_near_zero`,
+`vector3<REAL>` is a non-aggregate value type with public `x`, `y`, and `z`
+components that default to zero. Positional component initialization such as
+`{x, y, z}` remains available; designated aggregate initialization is not. Its
+explicit entity constructors form the displacement from the world origin to a
+`point3`, a `sphere3` center, a `plane3` parameter origin, or a `ray3` origin.
+It also provides indexed access, exact equality, unary signs, vector
+addition/subtraction, scalar multiplication/division, `dot`, `cross`, `length`,
+`length_squared`, `normalize`, `normalized`, `is_near_zero`,
 `projected_onto`,
 `rejected_from`, `reflected`, `angle_to`, `component_product`, `min_component`,
 `max_component`, and `approximately_equal`. Free functions provide `dot`,
@@ -956,28 +974,33 @@ Cartesian unit vectors. `normalize()` modifies the vector in place using the
 default tolerance and returns no value, while `normalized(tolerance)` returns a
 normalized copy.
 
-`point3<REAL>` is an aggregate with public `x`, `y`, and `z` coordinates that
-default to zero. It provides indexed access, exact equality, translation by a
-vector, subtraction of two points to form a vector, `magnitude()` as Euclidean
-distance and `manhattan_distance()` as L1 distance from the world origin,
-`approximately_equal`, `origin`, and free `distance`, `distance_squared`, and
-`lerp` operations. The free `rotate(axis, angle, point)` operation rotates a
-point about a world-origin axis using a signed right-handed angle in radians;
-the axis direction is normalized internally.
+`point3<REAL>` remains an aggregate with public `x`, `y`, and `z` coordinates
+that default to zero. Assigning a `vector3<REAL>` to it places the point at the
+vector's head when its tail is the world origin. It provides indexed access,
+exact equality, translation by a vector, subtraction of two points to form a
+vector, `magnitude()` as Euclidean distance and `manhattan_distance()` as L1
+distance from the world origin, `approximately_equal`, `origin`, and free
+`distance`, `distance_squared`, and `lerp` operations. The free
+`rotate(axis, angle, point)` operation rotates a point about a world-origin axis
+using a signed right-handed angle in radians; the axis direction is normalized
+internally.
 
 `ray3<REAL>` provides `origin`, `direction`, `point_at(s)`, `evaluate(s)`, and a
 unit `tangent`. `sphere3<REAL>` provides `center`, `radius`, `point_at(u, v)`,
-`normal_at`, and `parameters_of`. `plane3<REAL>` provides `origin`, `normal`,
-the two basis directions, `point_at(u, v)`, `signed_distance_to`, `project`, and
-`parameters_of`, plus `signed_distance_from_origin` for its equivalent Hessian
-normal form.
+`normal_at`, and `parameters_of`; assigning a `vector3<REAL>` moves its center
+to the vector's origin-anchored head while preserving its radius. `plane3<REAL>`
+provides `origin`, `normal`, the two basis directions, `point_at(u, v)`,
+`signed_distance_to`, `project`, and `parameters_of`, plus
+`signed_distance_from_origin` for its equivalent Hessian normal form. All of
+these entity/vector bridges require the same `REAL` type, remain within their
+2D or 3D world, and never implicitly convert an entity to a vector.
 
 `nurbs_spline3<REAL>` exposes its fields with `get_control_points`,
 `get_weights`, `get_knots`, `degree`, and `tolerance`. The spline exposes its
 domain with `s_min` and `s_max` and its geometry with `evaluate`, `point_at`,
 `derivatives_at`, `first_derivative`, `second_derivative`, `third_derivative`,
-`tangent`, `curvature`, and `approximate_arc_length`. Static `interpolate`
-constructs a new curve, while
+`tangent`, `curvature`, `get_polygon_length`, and `approximate_arc_length`.
+Static `interpolate` constructs a new curve, while
 `adopt_to_points` replaces an existing one. Both operations accept a `closed`
 overload. `is_closed()`, `get_start()`, and `get_end()` expose closure and
 cached, read-only endpoint values. Endpoints have no direct setters and are
@@ -993,14 +1016,15 @@ vector with a validated open-clamped uniform definition on the requested native
 parameter domain.
 
 `nurbs_arr_spline2<REAL>` and `nurbs_arr_spline3<REAL>` provide the same core
-domain, evaluation, analytic-derivative, curvature, interpolation, adoption,
-and checked editing operations over a public scalar `parameters` valarray. They
-derive control and knot counts from the current array shape, return
-reconstructed control points by value, and recompute endpoints. Explicit
-crosswise construction and the array type's `to_nurbs_spline()` convenience
-function preserve all logical fields. They deliberately have no implicit
-conversion, tagged I/O, projection, numerical-query, or SVG overloads; use the
-explicit ordinary constructor when an ordinary-spline-only API is needed.
+domain, evaluation, analytic-derivative, curvature, polygon-length,
+interpolation, adoption, and checked editing operations over a public scalar
+`parameters` valarray. They derive control and knot counts from the current
+array shape, return reconstructed control points by value, and recompute
+endpoints. Explicit crosswise construction and the array type's
+`to_nurbs_spline()` convenience function preserve all logical fields. They
+deliberately have no implicit conversion, tagged I/O, projection,
+numerical-query, or SVG overloads; use the explicit ordinary constructor when
+an ordinary-spline-only API is needed.
 
 `svg_view3<REAL>` creates validated two-point orthographic or perspective
 cameras and reports its mode as `svg_projection3`. The
@@ -1059,7 +1083,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.4.0+v0.4.0`; its commit hash is `unavailable` because a file cannot embed
+`0.4.1+v0.4.1`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated

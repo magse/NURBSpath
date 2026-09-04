@@ -101,6 +101,8 @@ int main() {
                "standard 2D constructor starts its domain at zero");
     check_near(standard_spline.s_max(), standard_distance, 0.0,
                "standard 2D constructor ends its domain at point distance");
+    check_near(standard_spline.get_polygon_length(), standard_distance, 1e-14,
+               "standard 2D constructor has endpoint-distance control polygon");
     check_point2(standard_spline.get_start(), standard_start, 0.0,
                  "standard 2D constructor caches its first endpoint");
     check_point2(standard_spline.get_end(), standard_end, 1e-14,
@@ -222,6 +224,8 @@ int main() {
         {1.0, root_half, 1.0},
         {0.0, 0.0, 0.0, 1.0, 1.0, 1.0},
         2);
+    check_near(quarter_circle.get_polygon_length(), 2.0, 0.0,
+               "2D quarter circle control polygon has two unit sides");
     const point2<real> middle = quarter_circle.evaluate(0.5);
     check_point2(middle, {root_half, root_half}, 1e-12,
                  "rational 2D quarter circle evaluation");

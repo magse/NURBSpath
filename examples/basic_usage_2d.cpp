@@ -10,7 +10,7 @@ int main() {
     using nurbspath::vector2;
 
     const point2<real> ray_origin{-2.0, 0.0};
-    const vector2<real> ray_direction{.x = 1.0, .y = 0.0};
+    const vector2<real> ray_direction{1.0, 0.0};
     const auto ray = nurbspath::make_ray2(ray_origin, ray_direction);
     const nurbspath::circle2<real> circle({0.0, 0.0}, 1.0);
 

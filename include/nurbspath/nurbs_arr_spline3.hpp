@@ -1006,6 +1006,32 @@ public:
     }
 
     /**
+     * @brief Get the total length of the current world-space control polygon.
+     *
+     * The result is the sum of Euclidean distances between consecutive
+     * control points reconstructed from `parameters`. No additional
+     * last-to-first segment is inserted. This is an exact length for the
+     * stored control polygonal chain and a simple estimate of the spline's arc
+     * length; weights, knots, and sampling do not affect the returned value.
+     *
+     * @return Control-polygon length in world units.
+     * @throws std::invalid_argument When the current public-array definition
+     * is invalid.
+     * @throws std::domain_error When definition validation encounters a
+     * near-zero homogeneous endpoint weight.
+     */
+    [[nodiscard]] REAL get_polygon_length() const {
+        const layout current = validated_layout();
+        REAL length = REAL(0);
+        for (std::size_t index = 1; index < current.control_count; ++index) {
+            length += distance(
+                control_point_unchecked(index - 1),
+                control_point_unchecked(index));
+        }
+        return length;
+    }
+
+    /**
      * @brief Estimate arc length using a uniform-native-parameter polyline.
      * @param segment_count Positive number of approximation segments.
      * @return Approximate world-space arc length.

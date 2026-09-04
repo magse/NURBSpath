@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 int main() {
     using namespace test_support;
@@ -32,7 +33,61 @@ int main() {
     check(point2<real>::origin().manhattan_distance() == 0.0,
           "2D origin has zero Manhattan distance");
 
-    static_assert(std::is_aggregate_v<vector2<real>>);
+    static_assert(!std::is_aggregate_v<vector2<real>>);
+    static_assert(std::is_nothrow_default_constructible_v<vector2<real>>);
+    static_assert(
+        std::is_nothrow_constructible_v<vector2<real>, real, real>);
+    static_assert(std::is_constructible_v<
+                  vector2<real>, const point2<real>&>);
+    static_assert(std::is_constructible_v<
+                  vector2<real>, const circle2<real>&>);
+    static_assert(std::is_constructible_v<
+                  vector2<real>, const ray2<real>&>);
+    static_assert(!std::is_convertible_v<point2<real>, vector2<real>>);
+    static_assert(!std::is_convertible_v<circle2<real>, vector2<real>>);
+    static_assert(!std::is_convertible_v<ray2<real>, vector2<real>>);
+    static_assert(std::is_nothrow_constructible_v<
+                  vector2<real>, const point2<real>&>);
+    static_assert(std::is_nothrow_constructible_v<
+                  vector2<real>, const circle2<real>&>);
+    static_assert(std::is_nothrow_constructible_v<
+                  vector2<real>, const ray2<real>&>);
+    static_assert(!std::is_constructible_v<
+                  vector2<real>, const point2<float>&>);
+    static_assert(!std::is_constructible_v<
+                  vector2<real>, const circle2<float>&>);
+    static_assert(!std::is_constructible_v<
+                  vector2<real>, const ray2<float>&>);
+    static_assert(std::is_assignable_v<
+                  point2<real>&, const vector2<real>&>);
+    static_assert(std::is_nothrow_assignable_v<
+                  point2<real>&, const vector2<real>&>);
+    static_assert(!std::is_assignable_v<
+                  point2<real>&, const vector2<float>&>);
+    static_assert(std::is_same_v<
+                  decltype(std::declval<point2<real>&>() =
+                           std::declval<const vector2<real>&>()),
+                  point2<real>&>);
+    static_assert(std::is_assignable_v<
+                  circle2<real>&, const vector2<real>&>);
+    static_assert(std::is_nothrow_assignable_v<
+                  circle2<real>&, const vector2<real>&>);
+    static_assert(!std::is_assignable_v<
+                  circle2<real>&, const vector2<float>&>);
+    static_assert(std::is_same_v<
+                  decltype(std::declval<circle2<real>&>() =
+                           std::declval<const vector2<real>&>()),
+                  circle2<real>&>);
+    static_assert(std::is_copy_assignable_v<point2<real>>);
+    static_assert(std::is_copy_assignable_v<circle2<real>>);
+    static_assert([] {
+        constexpr point2<real> source{1.25, -2.5};
+        constexpr vector2<real> constructed(source);
+        point2<real> assigned{};
+        assigned = constructed;
+        return constructed == vector2<real>{1.25, -2.5} &&
+               assigned == source;
+    }());
     vector2<real> components{};
     check(components.x == 0.0 && components.y == 0.0,
           "default 2D vector components are zero");
@@ -41,8 +96,8 @@ int main() {
     check(components == vector2<real>{2.0, -3.0},
           "2D vector components are public and mutable");
 
-    const vector2<real> first{.x = 3.0, .y = 4.0};
-    const vector2<real> second{.x = -2.0, .y = 1.0};
+    const vector2<real> first{3.0, 4.0};
+    const vector2<real> second{-2.0, 1.0};
     check_near(first.length(), 5.0, 1e-12, "2D vector length");
     check_near(first.dot(second), -2.0, 1e-12, "2D dot product");
     check_near(first.cross(second), 11.0, 1e-12, "2D scalar cross product");
@@ -78,6 +133,23 @@ int main() {
                "2D signed angle");
 
     const point2<real> point{.x = 1.0, .y = 2.0};
+    const point2<real> vector_source_point{-6.0, 7.5};
+    const vector2<real> vector_from_point{vector_source_point};
+    check(vector_from_point == vector2<real>{-6.0, 7.5} &&
+              vector_source_point == point2<real>{-6.0, 7.5},
+          "2D vector construction copies a point without changing it");
+    const vector2<real> point_assignment_source{8.0, -9.0};
+    point2<real> assigned_point{1.0, 2.0};
+    point2<real>* assigned_point_result =
+        &(assigned_point = point_assignment_source);
+    check(assigned_point_result == &assigned_point &&
+              assigned_point == point2<real>{8.0, -9.0} &&
+              point_assignment_source == vector2<real>{8.0, -9.0},
+          "2D point assignment copies vector components and returns itself");
+    point2<real> brace_assigned_point{};
+    brace_assigned_point = {4.0, -5.0};
+    check(brace_assigned_point == point2<real>{4.0, -5.0},
+          "2D point brace-list assignment remains unambiguous");
     check_point2(point + vector2<real>{2.0, -3.0}, {3.0, -1.0}, 1e-12,
                  "2D point translation");
     check((point2<real>{4.0, 6.0} - point).approximately_equal({3.0, 4.0}),
@@ -165,12 +237,33 @@ int main() {
           "malformed 2D CSV input preserves the value");
 
     const ray2<real> ray(point, {2.0, -1.0});
+    const point2<real> ray_origin_before = ray.origin();
+    const vector2<real> ray_direction_before = ray.direction();
+    const vector2<real> vector_from_ray{ray};
+    check(vector_from_ray == vector2<real>{1.0, 2.0} &&
+              ray.origin() == ray_origin_before &&
+              ray.direction() == ray_direction_before,
+          "2D vector construction copies a ray origin without changing the ray");
     check_point2(ray.evaluate(1.5), {4.0, 0.5}, 1e-12, "2D ray evaluation");
     check(ray.tangent().approximately_equal(
               vector2<real>{2.0, -1.0}.normalized(), 1e-12),
           "2D ray tangent");
 
     const circle2<real> circle({2.0, 3.0}, 2.0);
+    const vector2<real> vector_from_circle{circle};
+    check(vector_from_circle == vector2<real>{2.0, 3.0} &&
+              circle.center() == point2<real>{2.0, 3.0} &&
+              circle.radius() == 2.0,
+          "2D vector construction copies a circle center without changing it");
+    circle2<real> assigned_circle({-1.0, -2.0}, 4.5);
+    const vector2<real> circle_assignment_source{6.0, -7.0};
+    circle2<real>* assigned_circle_result =
+        &(assigned_circle = circle_assignment_source);
+    check(assigned_circle_result == &assigned_circle &&
+              assigned_circle.center() == point2<real>{6.0, -7.0} &&
+              assigned_circle.radius() == 4.5 &&
+              circle_assignment_source == vector2<real>{6.0, -7.0},
+          "2D circle assignment updates only its center and returns itself");
     check_point2(circle.point_at(0.0), {4.0, 3.0}, 1e-12,
                  "circle evaluation");
     check_near(circle.parameter_of({2.0, 1.0}),

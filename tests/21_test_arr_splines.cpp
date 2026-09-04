@@ -125,6 +125,24 @@ static_assert(std::same_as<
 static_assert(std::same_as<
               decltype(std::declval<const arr_spline3&>().curvature(real{})),
               real>);
+static_assert(std::same_as<
+              decltype(std::declval<const spline2&>().get_polygon_length()),
+              real>);
+static_assert(std::same_as<
+              decltype(std::declval<const spline3&>().get_polygon_length()),
+              real>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline2&>().get_polygon_length()),
+              real>);
+static_assert(std::same_as<
+              decltype(std::declval<const arr_spline3&>().get_polygon_length()),
+              real>);
+static_assert(noexcept(std::declval<const spline2&>().get_polygon_length()));
+static_assert(noexcept(std::declval<const spline3&>().get_polygon_length()));
+static_assert(!noexcept(
+    std::declval<const arr_spline2&>().get_polygon_length()));
+static_assert(!noexcept(
+    std::declval<const arr_spline3&>().get_polygon_length()));
 static_assert(!std::same_as<arr_spline2, spline2>);
 static_assert(!std::same_as<arr_spline3, spline3>);
 static_assert(!std::derived_from<arr_spline2, spline2>);
@@ -678,6 +696,17 @@ void test_flat_layout2() {
                   spline.get_knot_count_range(),
                   std::views::iota(std::size_t(12), std::size_t(19))),
           "2D range queries reflect a replaced public array layout");
+    check_near(
+        spline.get_polygon_length(),
+        std::sqrt(5.0) + std::sqrt(2.0) + std::sqrt(13.0),
+        1e-12,
+        "2D polygon length reflects whole public-array replacement");
+    spline.parameters[2] = 9.0;
+    check_near(
+        spline.get_polygon_length(),
+        std::sqrt(20.0) + std::sqrt(5.0) + std::sqrt(13.0),
+        1e-12,
+        "2D polygon length reflects a direct public-coordinate edit");
 
     const std::valarray<real> before_rejected_set = spline.parameters;
     check(throws_exception<std::invalid_argument>([&spline] {
@@ -795,6 +824,17 @@ void test_flat_layout3() {
                   spline.get_knot_count_range(),
                   std::views::iota(std::size_t(16), std::size_t(23))),
           "3D range queries reflect a replaced public array layout");
+    check_near(
+        spline.get_polygon_length(),
+        10.0 + std::sqrt(18.0),
+        1e-12,
+        "3D polygon length reflects whole public-array replacement");
+    spline.parameters[3] = 9.0;
+    check_near(
+        spline.get_polygon_length(),
+        std::sqrt(24.0) + std::sqrt(21.0) + 7.0,
+        1e-12,
+        "3D polygon length reflects a direct public-coordinate edit");
 
     const std::valarray<real> before_rejected_set = spline.parameters;
     check(throws_exception<std::invalid_argument>([&spline] {
@@ -988,20 +1028,29 @@ void test_validation2() {
               }) &&
               throws_exception<std::invalid_argument>([&spline] {
                   static_cast<void>(spline.get_knot_count_range());
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_polygon_length());
               }),
-          "2D geometry, both conversions, getters, and ranges reject malformed public shape");
+          "2D geometry, both conversions, getters, ranges, and polygon length reject malformed public shape");
     spline.parameters = valid;
     spline.parameters[6] = 0.0;
     check(throws_exception<std::invalid_argument>([&spline] {
               static_cast<void>(spline.first_derivative(0.0));
-          }),
-          "2D geometry rejects an invalid directly edited weight");
+          }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_polygon_length());
+              }),
+          "2D geometry and polygon length reject an invalid directly edited weight");
     spline.parameters = valid;
     spline.parameters[12] = -2.0;
     check(throws_exception<std::invalid_argument>([&spline] {
               static_cast<void>(spline.get_start());
-          }),
-          "2D dynamic endpoint access validates directly edited knots");
+          }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_polygon_length());
+              }),
+          "2D endpoint and polygon length validate directly edited knots");
 }
 
 void test_validation3() {
@@ -1064,20 +1113,29 @@ void test_validation3() {
               }) &&
               throws_exception<std::invalid_argument>([&spline] {
                   static_cast<void>(spline.get_knot_count_range());
+              }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_polygon_length());
               }),
-          "3D geometry, both conversions, getters, and ranges reject malformed public shape");
+          "3D geometry, both conversions, getters, ranges, and polygon length reject malformed public shape");
     spline.parameters = valid;
     spline.parameters[10] = 0.0;
     check(throws_exception<std::invalid_argument>([&spline] {
               static_cast<void>(spline.third_derivative(0.0));
-          }),
-          "3D geometry rejects an invalid directly edited weight");
+          }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_polygon_length());
+              }),
+          "3D geometry and polygon length reject an invalid directly edited weight");
     spline.parameters = valid;
     spline.parameters[15] = -2.0;
     check(throws_exception<std::invalid_argument>([&spline] {
               static_cast<void>(spline.get_end());
-          }),
-          "3D dynamic endpoint access validates directly edited knots");
+          }) &&
+              throws_exception<std::invalid_argument>([&spline] {
+                  static_cast<void>(spline.get_polygon_length());
+              }),
+          "3D endpoint and polygon length validate directly edited knots");
 }
 
 void test_evaluation_and_conversion2() {
@@ -1097,6 +1155,12 @@ void test_evaluation_and_conversion2() {
         -2.0, -2.0, -2.0, -2.0, 5.0, 5.0, 5.0, 5.0};
     check(same_values(array.parameters, expected),
           "2D ordinary conversion uses the documented flat order");
+    const real expected_polygon_length =
+        std::sqrt(10.0) + 5.0 + std::sqrt(13.0);
+    check_near(ordinary.get_polygon_length(), expected_polygon_length, 1e-12,
+               "2D ordinary spline sums consecutive control-polygon sides");
+    check_near(array.get_polygon_length(), expected_polygon_length, 1e-12,
+               "2D array spline matches the ordinary polygon length");
 
     for (const real s : {-2.0, -0.25, 2.5, 5.0}) {
         const auto array_derivatives = array.derivatives_at(s);
@@ -1213,6 +1277,12 @@ void test_evaluation_and_conversion3() {
         -2.0, -2.0, -2.0, -2.0, 5.0, 5.0, 5.0, 5.0};
     check(same_values(array.parameters, expected),
           "3D ordinary conversion uses the documented flat order");
+    const real expected_polygon_length =
+        std::sqrt(19.0) + std::sqrt(74.0) + std::sqrt(17.0);
+    check_near(ordinary.get_polygon_length(), expected_polygon_length, 1e-12,
+               "3D ordinary spline sums consecutive control-polygon sides");
+    check_near(array.get_polygon_length(), expected_polygon_length, 1e-12,
+               "3D array spline matches the ordinary polygon length");
 
     for (const real s : {-2.0, -0.25, 2.5, 5.0}) {
         const auto array_derivatives = array.derivatives_at(s);

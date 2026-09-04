@@ -72,4 +72,10 @@ private:
     vector3<REAL> direction_;
 };
 
+template <std::floating_point REAL>
+vector3<REAL>::vector3(const ray3<REAL>& ray_value) noexcept
+    : x(ray_value.origin().x),
+      y(ray_value.origin().y),
+      z(ray_value.origin().z) {}
+
 } // namespace nurbspath

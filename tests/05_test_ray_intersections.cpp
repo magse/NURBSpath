@@ -2,6 +2,8 @@
 
 #include "test_support.hpp"
 
+#include <type_traits>
+
 int main() {
     using namespace test_support;
 
@@ -11,6 +13,14 @@ int main() {
     settings.sample_count = 512;
 
     const ray3<real> ray({-3.0, 0.0, 0.0}, {1.0, 0.0, 0.0});
+    static_assert(std::is_constructible_v<vector3<real>, const ray3<real>&>);
+    static_assert(std::is_nothrow_constructible_v<
+                  vector3<real>, const ray3<real>&>);
+    static_assert(!std::is_convertible_v<const ray3<real>&, vector3<real>>);
+    static_assert(!std::is_constructible_v<
+                  vector3<real>, const ray3<float>&>);
+    check(vector3<real>(ray) == vector3<real>{-3.0, 0.0, 0.0},
+          "vector construction from a ray uses its origin");
     const sphere3<real> sphere({0.0, 0.0, 0.0}, 1.0);
     const auto sphere_hits = nurbspath::intersect_ray_sphere(ray, sphere, settings);
     check(sphere_hits.kind == nurbspath::intersection_kind::discrete,
