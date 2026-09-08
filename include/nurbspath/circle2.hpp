@@ -29,15 +29,91 @@ public:
      */
     circle2(const point2<REAL>& center_value, REAL radius_value)
         : center_(center_value), radius_(radius_value) {
-        if (!(radius_ > REAL(0)) || !std::isfinite(radius_)) {
-            throw std::invalid_argument("circle2 radius must be finite and positive");
-        }
+        validate_radius(radius_);
     }
 
     /** @brief Get the center. @return Constant center reference. */
     [[nodiscard]] const point2<REAL>& center() const noexcept { return center_; }
     /** @brief Get the radius. @return Radius in 2D world units. */
     [[nodiscard]] REAL radius() const noexcept { return radius_; }
+
+    /**
+     * @brief Get the center.
+     * @return Constant reference to the center in the 2D world.
+     */
+    [[nodiscard]] const point2<REAL>& get_center() const noexcept {
+        return center_;
+    }
+
+    /**
+     * @brief Get the radius.
+     * @return Radius in 2D world units.
+     */
+    [[nodiscard]] REAL get_radius() const noexcept { return radius_; }
+
+    /**
+     * @brief Replace the center while preserving the radius.
+     * @param center_value New center in the 2D world.
+     */
+    void set_center(const point2<REAL>& center_value) noexcept {
+        center_ = center_value;
+    }
+
+    /**
+     * @brief Replace the center using vector components while preserving radius.
+     * @tparam VECTOR Exactly `vector2<REAL>`; the template form keeps
+     * brace-list calls to the point overload unambiguous.
+     * @param center_value Vector whose components become the center coordinates.
+     */
+    template <typename VECTOR>
+        requires std::same_as<VECTOR, vector2<REAL>>
+    void set_center(const VECTOR& center_value) noexcept {
+        center_ = center_value;
+    }
+
+    /**
+     * @brief Replace the radius while preserving the center.
+     * @param radius_value New positive, finite radius in 2D world units.
+     * @throws std::invalid_argument When radius is not finite and positive.
+     */
+    void set_radius(REAL radius_value) {
+        validate_radius(radius_value);
+        radius_ = radius_value;
+    }
+
+    /**
+     * @brief Replace the center and radius together.
+     * @param center_value New center in the 2D world.
+     * @param radius_value New positive, finite radius in 2D world units.
+     * @throws std::invalid_argument When radius is not finite and positive.
+     * The circle remains unchanged when validation fails.
+     */
+    void set_center_and_radius(
+        const point2<REAL>& center_value,
+        REAL radius_value) {
+        validate_radius(radius_value);
+        center_ = center_value;
+        radius_ = radius_value;
+    }
+
+    /**
+     * @brief Replace the center from vector components and replace the radius.
+     * @tparam VECTOR Exactly `vector2<REAL>`; the template form keeps
+     * brace-list calls to the point overload unambiguous.
+     * @param center_value Vector whose components become the center coordinates.
+     * @param radius_value New positive, finite radius in 2D world units.
+     * @throws std::invalid_argument When radius is not finite and positive.
+     * The circle remains unchanged when validation fails.
+     */
+    template <typename VECTOR>
+        requires std::same_as<VECTOR, vector2<REAL>>
+    void set_center_and_radius(
+        const VECTOR& center_value,
+        REAL radius_value) {
+        validate_radius(radius_value);
+        center_ = center_value;
+        radius_ = radius_value;
+    }
 
     /**
      * @brief Replace the center using vector components while preserving the radius.
@@ -94,6 +170,13 @@ public:
     }
 
 private:
+    static void validate_radius(REAL radius_value) {
+        if (!(radius_value > REAL(0)) || !std::isfinite(radius_value)) {
+            throw std::invalid_argument(
+                "circle2 radius must be finite and positive");
+        }
+    }
+
     point2<REAL> center_;
     REAL radius_;
 };

@@ -31,15 +31,102 @@ public:
         const vector3<REAL>& direction_value,
         REAL tolerance = vector3<REAL>::default_tolerance())
         : origin_(origin_value), direction_(direction_value) {
-        if (direction_.is_near_zero(tolerance)) {
-            throw std::invalid_argument("ray3 direction must be non-zero");
-        }
+        validate_direction(direction_, tolerance);
     }
 
     /** @brief Get the base point. @return Constant reference to the origin. */
     [[nodiscard]] const point3<REAL>& origin() const noexcept { return origin_; }
     /** @brief Get the unnormalized parameter direction. @return Ray direction. */
     [[nodiscard]] const vector3<REAL>& direction() const noexcept { return direction_; }
+
+    /**
+     * @brief Get the base point.
+     * @return Constant reference to the origin.
+     */
+    [[nodiscard]] const point3<REAL>& get_origin() const noexcept {
+        return origin_;
+    }
+
+    /**
+     * @brief Get the unnormalized parameter direction.
+     * @return Constant reference to the ray direction.
+     */
+    [[nodiscard]] const vector3<REAL>& get_direction() const noexcept {
+        return direction_;
+    }
+
+    /**
+     * @brief Replace the base point while preserving the direction.
+     * @param origin_value New world-space base point at `s = 0`.
+     */
+    void set_origin(const point3<REAL>& origin_value) noexcept {
+        origin_ = origin_value;
+    }
+
+    /**
+     * @brief Replace the base point using vector components.
+     * @tparam VECTOR Exactly `vector3<REAL>`; the template form keeps
+     * brace-list calls to the point overload unambiguous.
+     * @param origin_value Vector whose components become the origin coordinates.
+     */
+    template <typename VECTOR>
+        requires std::same_as<VECTOR, vector3<REAL>>
+    void set_origin(const VECTOR& origin_value) noexcept {
+        origin_ = origin_value;
+    }
+
+    /**
+     * @brief Replace the unnormalized parameter direction.
+     * @param direction_value New nonzero parameter direction.
+     * @param tolerance Minimum accepted direction length.
+     * @throws std::invalid_argument When direction is within tolerance of zero.
+     * The ray remains unchanged when validation fails.
+     */
+    void set_direction(
+        const vector3<REAL>& direction_value,
+        REAL tolerance = vector3<REAL>::default_tolerance()) {
+        validate_direction(direction_value, tolerance);
+        direction_ = direction_value;
+    }
+
+    /**
+     * @brief Atomically replace the base point and parameter direction.
+     * @param origin_value New world-space base point at `s = 0`.
+     * @param direction_value New nonzero, unnormalized parameter direction.
+     * @param tolerance Minimum accepted direction length.
+     * @throws std::invalid_argument When direction is within tolerance of zero.
+     * The ray remains unchanged when validation fails.
+     */
+    void set_origin_and_direction(
+        const point3<REAL>& origin_value,
+        const vector3<REAL>& direction_value,
+        REAL tolerance = vector3<REAL>::default_tolerance()) {
+        validate_direction(direction_value, tolerance);
+        origin_ = origin_value;
+        direction_ = direction_value;
+    }
+
+    /**
+     * @brief Atomically replace the base point from vector components and the
+     * parameter direction.
+     * @tparam VECTOR Exactly `vector3<REAL>`; the template form keeps
+     * brace-list calls to the point overload unambiguous.
+     * @param origin_value Vector whose components become the origin coordinates.
+     * @param direction_value New nonzero, unnormalized parameter direction.
+     * @param tolerance Minimum accepted direction length.
+     * @throws std::invalid_argument When direction is within tolerance of zero.
+     * The ray remains unchanged when validation fails.
+     */
+    template <typename VECTOR>
+        requires std::same_as<VECTOR, vector3<REAL>>
+    void set_origin_and_direction(
+        const VECTOR& origin_value,
+        const vector3<REAL>& direction_value,
+        REAL tolerance = vector3<REAL>::default_tolerance()) {
+        validate_direction(direction_value, tolerance);
+        origin_ = origin_value;
+        direction_ = direction_value;
+    }
 
     /**
      * @brief Evaluate the ray parameterization.
@@ -68,6 +155,14 @@ public:
     }
 
 private:
+    static void validate_direction(
+        const vector3<REAL>& direction_value,
+        REAL tolerance) {
+        if (direction_value.is_near_zero(tolerance)) {
+            throw std::invalid_argument("ray3 direction must be non-zero");
+        }
+    }
+
     point3<REAL> origin_;
     vector3<REAL> direction_;
 };

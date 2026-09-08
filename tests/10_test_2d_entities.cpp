@@ -237,8 +237,27 @@ int main() {
           "malformed 2D CSV input preserves the value");
 
     const ray2<real> ray(point, {2.0, -1.0});
+    static_assert(std::is_same_v<
+                  decltype(std::declval<const ray2<real>&>().get_origin()),
+                  const point2<real>&>);
+    static_assert(std::is_same_v<
+                  decltype(std::declval<const ray2<real>&>().get_direction()),
+                  const vector2<real>&>);
+    static_assert(noexcept(
+        std::declval<const ray2<real>&>().get_origin()));
+    static_assert(noexcept(
+        std::declval<const ray2<real>&>().get_direction()));
+    static_assert(noexcept(
+        std::declval<ray2<real>&>().set_origin(
+            std::declval<const point2<real>&>())));
+    static_assert(noexcept(
+        std::declval<ray2<real>&>().set_origin(
+            std::declval<const vector2<real>&>())));
     const point2<real> ray_origin_before = ray.origin();
     const vector2<real> ray_direction_before = ray.direction();
+    check(&ray.get_origin() == &ray.origin() &&
+              &ray.get_direction() == &ray.direction(),
+          "2D ray get accessors agree with legacy accessors");
     const vector2<real> vector_from_ray{ray};
     check(vector_from_ray == vector2<real>{1.0, 2.0} &&
               ray.origin() == ray_origin_before &&
@@ -249,7 +268,78 @@ int main() {
               vector2<real>{2.0, -1.0}.normalized(), 1e-12),
           "2D ray tangent");
 
+    ray2<real> updated_ray({1.0, 2.0}, {3.0, 4.0});
+    updated_ray.set_origin({-5.0, 6.0});
+    check(updated_ray.get_origin() == point2<real>{-5.0, 6.0} &&
+              updated_ray.get_direction() == vector2<real>{3.0, 4.0},
+          "2D ray point origin setter preserves direction and accepts braces");
+    const vector2<real> replacement_ray_origin{7.0, -8.0};
+    updated_ray.set_origin(replacement_ray_origin);
+    check(updated_ray.get_origin() == point2<real>{7.0, -8.0} &&
+              updated_ray.get_direction() == vector2<real>{3.0, 4.0},
+          "2D ray vector origin setter preserves direction");
+    updated_ray.set_direction({-2.0, 5.0});
+    check(updated_ray.get_origin() == point2<real>{7.0, -8.0} &&
+              updated_ray.get_direction() == vector2<real>{-2.0, 5.0},
+          "2D ray direction setter preserves origin and accepts braces");
+
+    bool rejected_updated_ray_direction = false;
+    try {
+        updated_ray.set_direction({1e-4, 0.0}, 1e-3);
+    } catch (const std::invalid_argument&) {
+        rejected_updated_ray_direction = true;
+    }
+    check(rejected_updated_ray_direction &&
+              updated_ray.get_origin() == point2<real>{7.0, -8.0} &&
+              updated_ray.get_direction() == vector2<real>{-2.0, 5.0},
+          "2D ray direction setter rejects a near-zero direction and preserves the ray");
+
+    updated_ray.set_origin_and_direction({9.0, 10.0}, {0.0, -3.0});
+    check(updated_ray.get_origin() == point2<real>{9.0, 10.0} &&
+              updated_ray.get_direction() == vector2<real>{0.0, -3.0},
+          "2D ray combined setter accepts a point origin and updates both values");
+    const vector2<real> combined_ray_origin{-11.0, 12.0};
+    updated_ray.set_origin_and_direction(combined_ray_origin, {4.0, 0.0});
+    check(updated_ray.get_origin() == point2<real>{-11.0, 12.0} &&
+              updated_ray.get_direction() == vector2<real>{4.0, 0.0},
+          "2D ray combined setter accepts a vector origin and updates both values");
+
+    bool rejected_combined_ray_direction = false;
+    try {
+        updated_ray.set_origin_and_direction({99.0, 100.0}, {0.0, 0.0});
+    } catch (const std::invalid_argument&) {
+        rejected_combined_ray_direction = true;
+    }
+    check(rejected_combined_ray_direction &&
+              updated_ray.get_origin() == point2<real>{-11.0, 12.0} &&
+              updated_ray.get_direction() == vector2<real>{4.0, 0.0},
+          "2D ray combined setter validates before changing either value");
+    check_point2(updated_ray.evaluate(2.0), {-3.0, 12.0}, 1e-12,
+                 "2D ray evaluation uses its updated origin and direction");
+
     const circle2<real> circle({2.0, 3.0}, 2.0);
+    static_assert(std::is_same_v<
+                  decltype(std::declval<const circle2<real>&>().get_center()),
+                  const point2<real>&>);
+    static_assert(std::is_same_v<
+                  decltype(std::declval<const circle2<real>&>().get_radius()),
+                  real>);
+    static_assert(noexcept(
+        std::declval<const circle2<real>&>().get_center()));
+    static_assert(noexcept(
+        std::declval<const circle2<real>&>().get_radius()));
+    static_assert(noexcept(
+        std::declval<circle2<real>&>().set_center(
+            std::declval<const point2<real>&>())));
+    static_assert(noexcept(
+        std::declval<circle2<real>&>().set_center(
+            std::declval<const vector2<real>&>())));
+    static_assert(std::is_same_v<
+                  decltype(std::declval<circle2<real>&>().set_radius(real{})),
+                  void>);
+    check(&circle.get_center() == &circle.center() &&
+              circle.get_radius() == circle.radius(),
+          "circle get accessors agree with legacy accessors");
     const vector2<real> vector_from_circle{circle};
     check(vector_from_circle == vector2<real>{2.0, 3.0} &&
               circle.center() == point2<real>{2.0, 3.0} &&
@@ -264,6 +354,66 @@ int main() {
               assigned_circle.radius() == 4.5 &&
               circle_assignment_source == vector2<real>{6.0, -7.0},
           "2D circle assignment updates only its center and returns itself");
+
+    circle2<real> updated_circle({1.0, 2.0}, 3.0);
+    updated_circle.set_center({4.0, 5.0});
+    check(updated_circle.get_center() == point2<real>{4.0, 5.0} &&
+              updated_circle.get_radius() == 3.0,
+          "circle point center setter preserves radius and accepts braces");
+    const vector2<real> updated_center{-6.0, 7.0};
+    updated_circle.set_center(updated_center);
+    check(updated_circle.get_center() == point2<real>{-6.0, 7.0} &&
+              updated_circle.get_radius() == 3.0,
+          "circle vector center setter preserves radius");
+    updated_circle.set_radius(8.0);
+    check(updated_circle.get_center() == point2<real>{-6.0, 7.0} &&
+              updated_circle.get_radius() == 8.0,
+          "circle radius setter preserves center");
+    updated_circle.set_center_and_radius({9.0, -10.0}, 11.0);
+    check(updated_circle.get_center() == point2<real>{9.0, -10.0} &&
+              updated_circle.get_radius() == 11.0,
+          "circle point center-and-radius setter updates both values");
+    const vector2<real> replacement_center{-12.0, 13.0};
+    updated_circle.set_center_and_radius(replacement_center, 14.0);
+    check(updated_circle.get_center() == point2<real>{-12.0, 13.0} &&
+              updated_circle.get_radius() == 14.0,
+          "circle vector center-and-radius setter updates both values");
+    check_point2(
+        updated_circle.point_at(0.0),
+        {2.0, 13.0},
+        1e-12,
+        "circle evaluation uses the updated center and radius");
+
+    const real invalid_updated_radii[]{
+        0.0,
+        -1.0,
+        std::numeric_limits<real>::infinity(),
+        std::numeric_limits<real>::quiet_NaN()};
+    std::size_t rejected_updated_radii = 0;
+    for (const real invalid_radius : invalid_updated_radii) {
+        try {
+            updated_circle.set_radius(invalid_radius);
+        } catch (const std::invalid_argument&) {
+            ++rejected_updated_radii;
+        }
+    }
+    check(rejected_updated_radii == std::size(invalid_updated_radii) &&
+              updated_circle.get_center() == point2<real>{-12.0, 13.0} &&
+              updated_circle.get_radius() == 14.0,
+          "circle radius setter rejects every invalid radius and preserves the circle");
+
+    bool rejected_combined_radius = false;
+    try {
+        updated_circle.set_center_and_radius(
+            point2<real>{99.0, 100.0},
+            std::numeric_limits<real>::quiet_NaN());
+    } catch (const std::invalid_argument&) {
+        rejected_combined_radius = true;
+    }
+    check(rejected_combined_radius &&
+              updated_circle.get_center() == point2<real>{-12.0, 13.0} &&
+              updated_circle.get_radius() == 14.0,
+          "circle combined setter validates before changing either value");
     check_point2(circle.point_at(0.0), {4.0, 3.0}, 1e-12,
                  "circle evaluation");
     check_near(circle.parameter_of({2.0, 1.0}),

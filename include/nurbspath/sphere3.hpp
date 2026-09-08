@@ -36,15 +36,89 @@ public:
      */
     sphere3(const point3<REAL>& center_value, REAL radius_value)
         : center_(center_value), radius_(radius_value) {
-        if (!(radius_ > REAL(0))) {
-            throw std::invalid_argument("sphere3 radius must be positive");
-        }
+        validate_radius(radius_);
     }
 
     /** @brief Get the world-space center. @return Constant center reference. */
     [[nodiscard]] const point3<REAL>& center() const noexcept { return center_; }
     /** @brief Get the radius. @return Radius in world units. */
     [[nodiscard]] REAL radius() const noexcept { return radius_; }
+
+    /**
+     * @brief Get the world-space center.
+     * @return Constant center reference.
+     */
+    [[nodiscard]] const point3<REAL>& get_center() const noexcept {
+        return center_;
+    }
+
+    /**
+     * @brief Get the radius.
+     * @return Radius in world units.
+     */
+    [[nodiscard]] REAL get_radius() const noexcept { return radius_; }
+
+    /**
+     * @brief Replace the world-space center while preserving the radius.
+     * @param center_value New world-space center.
+     */
+    void set_center(const point3<REAL>& center_value) noexcept {
+        center_ = center_value;
+    }
+
+    /**
+     * @brief Replace the world-space center using vector components.
+     * @tparam VECTOR Exact `vector3<REAL>` source type.
+     * @param center_value Vector whose components become the center coordinates.
+     */
+    template <typename VECTOR>
+        requires std::same_as<VECTOR, vector3<REAL>>
+    void set_center(const VECTOR& center_value) noexcept {
+        center_ = center_value;
+    }
+
+    /**
+     * @brief Replace the radius while preserving the center.
+     * @param radius_value New positive radius in world units.
+     * @throws std::invalid_argument When radius is not positive.
+     */
+    void set_radius(REAL radius_value) {
+        validate_radius(radius_value);
+        radius_ = radius_value;
+    }
+
+    /**
+     * @brief Atomically replace the center and radius.
+     * @param center_value New world-space center.
+     * @param radius_value New positive radius in world units.
+     * @throws std::invalid_argument When radius is not positive. The sphere is
+     * unchanged when validation fails.
+     */
+    void set_center_and_radius(
+        const point3<REAL>& center_value,
+        REAL radius_value) {
+        validate_radius(radius_value);
+        center_ = center_value;
+        radius_ = radius_value;
+    }
+
+    /**
+     * @brief Atomically replace the center from vector components and the radius.
+     * @tparam VECTOR Exact `vector3<REAL>` source type.
+     * @param center_value Vector whose components become the center coordinates.
+     * @param radius_value New positive radius in world units.
+     * @throws std::invalid_argument When radius is not positive. The sphere is
+     * unchanged when validation fails.
+     */
+    template <typename VECTOR>
+        requires std::same_as<VECTOR, vector3<REAL>>
+    void set_center_and_radius(
+        const VECTOR& center_value,
+        REAL radius_value) {
+        validate_radius(radius_value);
+        center_ = center_value;
+        radius_ = radius_value;
+    }
 
     /**
      * @brief Replace the center with vector components while preserving radius.
@@ -158,6 +232,12 @@ public:
     }
 
 private:
+    static void validate_radius(REAL radius_value) {
+        if (!(radius_value > REAL(0))) {
+            throw std::invalid_argument("sphere3 radius must be positive");
+        }
+    }
+
     point3<REAL> center_;
     REAL radius_;
 };

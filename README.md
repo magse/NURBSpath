@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.4.1 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.4.2 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -882,10 +882,18 @@ Its explicit entity constructors form the displacement from the 2D origin to a
 aggregate with public, zero-defaulted `x` and `y` coordinates. Assigning a
 `vector2<REAL>` to a `point2<REAL>` places the point at the vector's head when
 its tail is the 2D origin. Assigning one to a `circle2<REAL>` moves the circle's
-center to that position while preserving its radius. `point2` also provides
-`magnitude()` as Euclidean distance and `manhattan_distance()` as L1 distance
-from the 2D origin. `ray2<REAL>` uses forward parameter `s`, and `circle2<REAL>`
-provides `point_at(u)`, `normal_at`, and `parameter_of`.
+center to that position while preserving its radius. `circle2` exposes its
+definition through `get_center()` and `get_radius()`. `set_center()` accepts a
+2D point or vector without changing the radius, `set_radius()` changes only the
+validated radius, and `set_center_and_radius()` atomically changes both. The
+existing `center()` and `radius()` accessors remain available. `point2` also
+provides `magnitude()` as Euclidean distance and `manhattan_distance()` as L1
+distance from the 2D origin. `ray2<REAL>` uses forward parameter `s` and
+provides `get_origin()`, `get_direction()`, `set_origin()`, `set_direction()`,
+and atomic `set_origin_and_direction()` operations. Its existing `origin()` and
+`direction()` accessors remain available, and changing its direction never
+normalizes it. `circle2<REAL>` provides `point_at(u)`, `normal_at`, and
+`parameter_of`.
 
 `point2`, `vector2`, `point3`, and `vector3` support stream insertion and
 extraction with `operator<<` and `operator>>`. Their text format is
@@ -985,13 +993,24 @@ distance from the world origin, `approximately_equal`, `origin`, and free
 using a signed right-handed angle in radians; the axis direction is normalized
 internally.
 
-`ray3<REAL>` provides `origin`, `direction`, `point_at(s)`, `evaluate(s)`, and a
-unit `tangent`. `sphere3<REAL>` provides `center`, `radius`, `point_at(u, v)`,
-`normal_at`, and `parameters_of`; assigning a `vector3<REAL>` moves its center
-to the vector's origin-anchored head while preserving its radius. `plane3<REAL>`
-provides `origin`, `normal`, the two basis directions, `point_at(u, v)`,
-`signed_distance_to`, `project`, and `parameters_of`, plus
-`signed_distance_from_origin` for its equivalent Hessian normal form. All of
+`ray3<REAL>` provides `get_origin()`, `get_direction()`, `set_origin()`,
+`set_direction()`, atomic `set_origin_and_direction()`, `point_at(s)`,
+`evaluate(s)`, and a unit `tangent`. Its legacy `origin()` and `direction()`
+accessors remain available, and direction setters preserve the native scale.
+`sphere3<REAL>` provides `get_center()`, `get_radius()`,
+`set_center()`, `set_radius()`, `set_center_and_radius()`, `point_at(u, v)`,
+`normal_at`, and `parameters_of`; the legacy `center()` and `radius()` accessors
+remain available. Center setters accept either a 3D point or vector, and the
+combined setter validates the radius before changing either value. Assigning a
+`vector3<REAL>` moves the center to the vector's origin-anchored head while
+preserving its radius. `plane3<REAL>` provides `get_origin()`, `get_normal()`,
+`get_u_direction()`, `get_v_direction()`, and
+`get_signed_distance_from_origin()` while retaining the existing short
+accessor names. `set_origin()` translates the plane without changing its frame,
+`set_normal()` regenerates a stable frame, and `set_u_direction()` projects its
+hint into the plane and regenerates v. The `set_definition()` overloads
+atomically mirror all three plane constructor forms. The plane also provides
+`point_at(u, v)`, `signed_distance_to`, `project`, and `parameters_of`. All of
 these entity/vector bridges require the same `REAL` type, remain within their
 2D or 3D world, and never implicitly convert an entity to a vector.
 
@@ -1083,7 +1102,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.4.1+v0.4.1`; its commit hash is `unavailable` because a file cannot embed
+`0.4.2+v0.4.2`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated
