@@ -1,6 +1,6 @@
 # nurbspath
 
-`nurbspath` 0.4.2 is a dependency-free, header-only C++20 geometry library for
+`nurbspath` 0.4.3 is a dependency-free, header-only C++20 geometry library for
 two- and three-dimensional paths and tolerance-aware numerical queries. It
 provides strongly typed vectors, points, rays, NURBS curves, circles, spheres,
 and infinite planes. The 2D and 3D Cartesian worlds are separate; explicit
@@ -20,6 +20,10 @@ The public code uses `snake_case`. Every geometry type is a template whose
 floating-point parameter is named `REAL`, so the same API works with `float`,
 `double`, and `long double`.
 
+See the [illustrated PDF manual](https://github.com/magse/NURBSpath/blob/main/manual/nurbspath-manual.pdf) for entity
+construction, worked algorithm examples, and the public API catalogue.
+Its [LaTeX sources and build instructions](https://github.com/magse/NURBSpath/blob/main/manual/README.md) are available in
+`manual/`.
 See [INSTALL.md](INSTALL.md) for requirements, build and test commands,
 installation, and CMake package consumption.
 See [DATA.md](DATA.md) for the versioned, tagged 3D text format, optional line
@@ -1228,7 +1232,7 @@ int main() {
 `NURBSPATH_GIT_DESCRIBE`, `NURBSPATH_GIT_DIRTY`,
 `NURBSPATH_GIT_COMMIT_AVAILABLE`, and `NURBSPATH_GIT_VERSION` describe the
 repository state observed by CMake. The checked-in release fallback reports
-`0.4.2+v0.4.2`; its commit hash is `unavailable` because a file cannot embed
+`0.4.3+v0.4.3`; its commit hash is `unavailable` because a file cannot embed
 the hash of the commit that contains itself.
 
 CMake refreshes those Git values during configuration and places its generated

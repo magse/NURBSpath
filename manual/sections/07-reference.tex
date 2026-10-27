@@ -1,0 +1,21 @@
+\chapter{Public API catalogue}\label{chap:reference}
+This catalogue is generated from the public headers, using the installed
+Doxygen XML extractor. It records individual callable overloads, constructors,
+public member data, result records, and namespace aliases/enums. Private
+members and \api{nurbspath::detail} implementation helpers are excluded.
+
+The containing section supplies each class's template context, normally
+\api{REAL}. A \api{static} member is called on the class; other members are
+called on an instance. Template requirements are part of the header contract.
+The compact declarations below retain the documented argument lists and
+defaults; diagnostic attributes such as \api{[[nodiscard]]} can be seen in the
+source headers. See the illustrated chapters for units, construction choices,
+and numerical limitations. All names belong to namespace \api{nurbspath}.
+
+\begin{manualnote}[A catalogue rather than generated implementation]
+The entries show public signatures and short source comments. They do not
+include function bodies. The checked-in LaTeX snapshot makes this appendix
+available for a normal local TeX build even if Doxygen is unavailable later.
+\api{python3 tools/generate_api.py} refreshes it without changing CMake.
+\end{manualnote}
+\input{sections/reference_api}

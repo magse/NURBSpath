@@ -1,0 +1,352 @@
+\chapter{Construction and shared ownership}
+\label{chap:creators}
+
+The public constructors create values. The allocation helpers in
+\api{nurbspath/creators.hpp} create the corresponding values under
+\api{std::shared_ptr} ownership. They retain the constructors' geometric
+validation and exceptions. Both styles are useful: local calculations often
+use values, while a collection with shared lifetime may use factory results.
+The umbrella header includes these helpers.
+
+\begin{lstlisting}[language=C++]
+#include <nurbspath/config.hpp>
+#include <nurbspath/nurbspath.hpp>
+
+using namespace nurbspath;
+point3<double> value{1.0, 2.0, 3.0};
+auto shared = make_point3<double>(1.0, 2.0, 3.0);
+const double separation = distance(value, *shared);
+\end{lstlisting}
+
+The suffix identifies the Cartesian world. A 2D factory never silently
+allocates a 3D entity. Calls below use \api{double}; replacing it with
+another standard floating-point type changes the scalar type throughout.
+Allocation can throw \api{std::bad_alloc} in addition to the validation
+exceptions noted for each entity.
+
+\section{Point and vector factory catalogue}
+
+\begin{longtable}{@{}p{.43\linewidth}p{.52\linewidth}@{}}
+\caption{All point and vector allocation families. Each result is a shared
+pointer to the type named after \api{make_}.}\\
+\toprule
+Call arguments after the template & Created value \\
+\midrule
+\endfirsthead
+\toprule Call arguments after the template & Created value \\
+\midrule
+\endhead
+\api{make_point2<REAL>()} & The 2D origin. \\
+\api{make_point2<REAL>(x, y)} & A 2D position with the supplied coordinates. \\
+\api{make_point3<REAL>()} & The 3D origin. \\
+\api{make_point3<REAL>(x, y, z)} & A 3D position with the supplied coordinates. \\
+\api{make_vector2<REAL>()} & The 2D zero vector. \\
+\api{make_vector2<REAL>(x, y)} & The supplied 2D components. \\
+\api{make_vector2<REAL>(point)} & Coordinates copied from a \api{point2}. \\
+\api{make_vector2<REAL>(circle)} & Center coordinates copied from a \api{circle2}. \\
+\api{make_vector2<REAL>(ray)} & Origin coordinates copied from a \api{ray2}. \\
+\api{make_vector3<REAL>()} & The 3D zero vector. \\
+\api{make_vector3<REAL>(x, y, z)} & The supplied 3D components. \\
+\api{make_vector3<REAL>(point)} & Coordinates copied from a \api{point3}. \\
+\api{make_vector3<REAL>(sphere)} & Center coordinates copied from a \api{sphere3}. \\
+\api{make_vector3<REAL>(plane)} & Parameter-origin coordinates copied from a \api{plane3}. \\
+\api{make_vector3<REAL>(ray)} & Origin coordinates copied from a \api{ray3}. \\
+\bottomrule
+\end{longtable}
+
+The entity-to-vector factories perform the same explicit component copy as
+the constructors in Chapter~\ref{chap:entities}. To allocate a copy of a
+ray direction, obtain \api{ray.direction()} and use its components, or use
+\api{std::make_shared<vector3<double>>(ray.direction())}.
+
+\section{Ray, circle, and sphere creation}
+
+The origin-and-direction helpers are \api{make_ray2} and \api{make_ray3}.
+The two-point helpers are \api{make_ray2_from_points} and
+\api{make_ray3_from_points}.
+The first takes \api{(origin, direction, tolerance)}; the second takes
+\api{(origin, through_point, tolerance)}. Tolerance is optional and defaults
+to \api{vector2<REAL>::default_tolerance()} or its 3D counterpart.
+The point-based helper uses \api{through_point - origin} directly, with
+no normalization. The through point is therefore at native parameter $s=1$.
+
+\begin{lstlisting}[language=C++]
+const point2<double> a2{1.0, 1.0};
+const point2<double> b2{3.0, 2.0};
+auto ray_a = make_ray2<double>(a2, b2 - a2);
+auto ray_b = make_ray2_from_points<double>(a2, b2);
+auto circle = make_circle2<double>(point2<double>{0.0, 0.0}, 2.0);
+
+const point3<double> a3{1.0, 1.0, 0.0};
+const point3<double> b3{3.0, 2.0, 1.0};
+auto ray_c = make_ray3<double>(a3, b3 - a3);
+auto ray_d = make_ray3_from_points<double>(a3, b3);
+auto sphere = make_sphere3<double>(point3<double>{0.0, 0.0, 0.0}, 2.0);
+\end{lstlisting}
+
+A direction or point separation within the ray tolerance throws
+\api{std::invalid_argument}. \api{make_circle2(center, radius)} and
+\api{make_sphere3(center, radius)} require finite, positive radii and throw
+\api{std::invalid_argument} otherwise. These are the complete circle and
+sphere factory families; they do not infer a circle or sphere from several
+boundary points.
+
+\section{Five ways to allocate a plane}
+
+The three \api{make_plane3} overloads mirror the three constructors:
+
+\begin{enumerate}[leftmargin=*]
+\item \api{(normal, signed_distance, tolerance)} uses Hessian normal form.
+\item \api{(origin, normal, tolerance)} chooses a stable in-plane frame.
+\item \api{(origin, normal, u_hint, tolerance)} sets the preferred positive-u
+direction by in-plane projection.
+\end{enumerate}
+
+Two named helpers derive an oriented frame from construction geometry:
+\begin{itemize}[leftmargin=*]
+\item \api{make_plane3_from_u_direction} takes \api{origin},
+\api{u_direction}, \api{plane_point}, and optional \api{tolerance}.
+\item \api{make_plane3_from_points} takes \api{origin}, \api{u_point},
+\api{plane_point}, and optional \api{tolerance}; it uses
+\api{u_point - origin} as its positive-u direction.
+\end{itemize}
+The third point determines the positive-v side by rejection from that axis:
+\[
+ \widehat u=\frac{U}{\lVert U\rVert},\quad
+ V=(P-O)-((P-O)\cdot\widehat u)\widehat u,\quad
+ \widehat v=\frac{V}{\lVert V\rVert},\quad
+ \widehat n=\widehat u\times\widehat v.
+\]
+All five helpers accept the optional vector tolerance. A short normal,
+u-direction, or rejected v-component causes a \api{std::domain_error}
+exception. A non-finite Hessian distance causes \api{std::invalid_argument}.
+
+\begin{lstlisting}[language=C++]
+const point3<double> origin{1.0, 2.0, 3.0};
+const point3<double> u_point{3.0, 2.0, 3.0};
+const point3<double> plane_point{2.0, 4.0, 3.0};
+auto hessian = make_plane3<double>(vector3<double>{0.0, 0.0, 2.0}, 3.0);
+auto from_normal = make_plane3<double>(origin, vector3<double>::unit_z());
+auto with_hint = make_plane3<double>(
+    origin, vector3<double>::unit_z(), vector3<double>::unit_x());
+auto from_direction = make_plane3_from_u_direction<double>(
+    origin, vector3<double>{2.0, 0.0, 0.0}, plane_point);
+auto from_points = make_plane3_from_points<double>(origin, u_point, plane_point);
+\end{lstlisting}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=1.1]
+\fill[surface] (-.3,-.35)--(4.7,-.35)--(4.7,2.75)--(-.3,2.75)--cycle;
+\coordinate (O) at (0,0); \coordinate (U) at (3.8,0);
+\coordinate (P) at (2.2,2.3); \coordinate (H) at (2.2,0);
+\draw[vector] (O)--(U) node[midway,below]{$U-O$};
+\draw[guide] (O)--(P);
+\draw[guide] (P)--(H);
+\draw[vector,manualteal] (H)--(P) node[midway,right]{$V$};
+\draw[vector,manualorange] (O)--(0,1.15) node[left]{$\widehat v$};
+\node[point,label=below left:$O$] at (O) {};
+\node[point,label=below:$U$] at (U) {};
+\node[point,label=above:$P$] at (P) {};
+\draw[manualmuted] (2,.0)--(2,.2)--(2.2,.2);
+\end{tikzpicture}
+\caption{Three-point plane construction viewed in the plane itself. The
+third point chooses the positive-v side; its along-u component is discarded
+when the frame is built.}
+\end{figure}
+
+Moving the third point across the u-axis reverses both $\widehat v$ and
+$\widehat n$. Three collinear points do not determine a plane through this
+interface. A supplied normal or u-direction need not have unit length.
+
+\section{Ordinary spline constructors and factories}
+
+The following catalogue applies independently to \api{nurbs_spline2} and
+\api{nurbs_spline3}. Write \api{S} for either type,
+\api{P} for its same-world point type, \api{A} for the corresponding
+array-backed type, \api{p} for the degree, \api{n} for the control-point
+count, and \api{tol} for the positive definition tolerance. The factories
+\api{make_nurbs_spline2} and \api{make_nurbs_spline3} return
+\api{std::shared_ptr<S>}.
+
+\begin{table}[htbp]
+\centering
+\caption{Complete ordinary-spline construction families. Optional brackets
+describe permitted omitted arguments, not C++ syntax.}
+\begin{tabularx}{\linewidth}{@{}p{.52\linewidth}Y@{}}
+\toprule
+Argument sequence & Availability and behavior \\
+\midrule
+\api{start, end, n, p} & Constructor and factory; standard open definition. \\
+\api{start, end, n, p, tol} & Constructor and factory; explicit tolerance. \\
+\api{start, end, n, p, closed [, tol]} & Constructor and factory; explicit Boolean closure request. \\
+\api{points, weights, knots, p [, tol]} & Constructor and factory with \api{std::vector} collections. \\
+\api{points, weights, knots, p, closed [, tol]} & Constructor and factory with vector collections and a closure request. \\
+\api{points, weights, knots, p [, tol]} & Factory also accepts point/scalar \api{std::valarray} collections. \\
+\api{points, weights, knots, p, closed [, tol]} & Factory also accepts valarrays and a closure request. \\
+\api{array_spline} & Explicit constructor and factory; copy from corresponding \api{A}. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The omitted spline tolerance is
+\api{64 * std::numeric_limits<REAL>::epsilon()}.
+The standard constructor places $n$ control points uniformly from start to
+end with unit weights and open-clamped knots over
+$[0,\operatorname{distance}(\mathrm{start},\mathrm{end})]$. It creates a
+straight curve, with a positive domain extent required by validation.
+The explicit-tolerance fifth argument is a scalar; the closure overload
+requires an actual \api{bool}, avoiding accidental interpretation of a
+tolerance as a closure flag.
+
+\begin{lstlisting}[language=C++]
+const point2<double> start{0.0, 0.0};
+const point2<double> end{4.0, 0.0};
+nurbs_spline2<double> line(start, end, 5, 2);
+auto shared_line = make_nurbs_spline2<double>(start, end, 5, 2);
+auto explicit_tolerance = make_nurbs_spline2<double>(start, end, 5, 2, 1e-10);
+auto explicit_open = make_nurbs_spline2<double>(start, end, 5, 2, false, 1e-10);
+\end{lstlisting}
+
+Complete definitions supply every control point, positive weight, and knot.
+For $n$ control points and degree $p$, the knot count is $n+p+1$, with
+$0<p<n$, nondecreasing finite knots, and a nonempty active domain. The
+standard and complete-definition families have matching validation contracts;
+the full mathematical requirements are in Chapter~\ref{chap:splines}.
+
+\begin{lstlisting}[language=C++]
+std::vector<point3<double>> points{
+    {0.0, 0.0, 0.0}, {1.0, 2.0, 0.5}, {3.0, 0.0, 1.0}};
+std::vector<double> weights{1.0, 1.0, 1.0};
+std::vector<double> knots{0.0, 0.0, 0.0, 2.0, 2.0, 2.0};
+nurbs_spline3<double> value_curve(points, weights, knots, 2);
+auto shared_curve = make_nurbs_spline3<double>(points, weights, knots, 2);
+
+std::valarray<point3<double>> array_points{points.data(), points.size()};
+std::valarray<double> array_weights{weights.data(), weights.size()};
+std::valarray<double> array_knots{knots.data(), knots.size()};
+auto copied_arrays = make_nurbs_spline3<double>(
+    array_points, array_weights, array_knots, 2, false);
+\end{lstlisting}
+
+The ordinary constructors take vectors. The ordinary factories additionally
+accept const, mutable, lvalue, or rvalue valarrays of same-world points plus
+scalar valarrays; they copy them in index order into ordinary vector storage.
+Brace-list calls remain available through the vector overloads.
+
+\subsection{Closure describes a seam}
+
+A \api{closed = true} request requires coincident evaluated endpoints of
+the active domain within the spline tolerance. It does not append a control
+point or synthesize a loop from a straight start/end construction. Use a
+complete definition or closed interpolation samples to create a useful closed
+shape.
+
+\begin{lstlisting}[language=C++]
+auto closed_polygon = make_nurbs_spline2<double>(
+    std::vector<point2<double>>{
+        {0.0, 0.0}, {2.0, 0.0}, {1.0, 1.5}, {0.0, 0.0}},
+    std::vector<double>{1.0, 1.0, 1.0, 1.0},
+    std::vector<double>{0.0, 0.0, 1.0, 2.0, 3.0, 3.0},
+    1, true);
+\end{lstlisting}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=1.1]
+\begin{scope}
+\draw[curve] (0,0)--(4,0);
+\foreach \x in {0,1,2,3,4}{\node[point] at (\x,0) {};}
+\node[below] at (0,0) {start}; \node[below] at (4,0) {end};
+\node[above] at (2,.35) {standard straight definition};
+\end{scope}
+\begin{scope}[shift={(6,0)}]
+\draw[curve] (0,0)--(2,0)--(1,1.5)--cycle;
+\node[point,label=below left:seam] at (0,0) {};
+\node[point] at (2,0) {}; \node[point] at (1,1.5) {};
+\node[above] at (1,1.9) {complete closed definition};
+\end{scope}
+\end{tikzpicture}
+\caption{The standard factory places control points along a segment. A
+closed flag validates a seam; the supplied definition determines the shape.}
+\end{figure}
+
+\section{Array-backed spline construction}
+
+\api{nurbs_arr_spline2} and \api{nurbs_arr_spline3} are separate classes,
+not derived ordinary splines. Their public \api{std::valarray<REAL> parameters}
+contains point-major control coordinates, then all weights, then all knots.
+The degree, tolerance, and closure state are stored separately. This layout
+is useful when an optimizer must copy or replace the entire scalar state.
+The conversion operations retain the Cartesian world.
+
+For dimension $d$, $n$ controls, and degree $p$, the flattened length is
+$(d+2)n+p+1$. In 2D it is
+\[
+ [x_0,y_0,\ldots,x_{n-1},y_{n-1},
+   w_0,\ldots,w_{n-1},k_0,\ldots,k_{n+p}],
+\]
+and in 3D each point contributes X/Y/Z coordinates.
+
+\begin{table}[htbp]
+\centering
+\caption{Complete array-backed construction families, for both dimensions.
+Direct constructors and shared-pointer factories support the same families.}
+\begin{tabularx}{\linewidth}{@{}p{.57\linewidth}Y@{}}
+\toprule
+Argument sequence & Created definition \\
+\midrule
+\api{start, end, n, p} & Standard open straight curve. \\
+\api{start, end, n, p, tol} & Standard curve with explicit tolerance. \\
+\api{start, end, n, p, closed [, tol]} & Standard curve with a Boolean closure request. \\
+\api{parameters, p [, tol]} & Open definition from flattened scalar valarray. \\
+\api{parameters, p, closed [, tol]} & Flattened definition with a Boolean closure request. \\
+\api{points, weights, knots, p [, tol]} & Open definition from component vectors. \\
+\api{points, weights, knots, p, closed [, tol]} & Component-vector definition with a Boolean closure request. \\
+\api{ordinary_spline} & Independent copy from corresponding ordinary spline. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The matching factory names are \api{make_nurbs_arr_spline2} and
+\api{make_nurbs_arr_spline3}.
+The component collection overloads take \api{std::vector}s; a flattened
+overload takes one scalar \api{std::valarray}. The point-valarray overloads
+listed for ordinary factories are not separate array-backed factory
+overloads. The constructors and factories reject malformed array shapes
+before indexing the data.
+
+\begin{lstlisting}[language=C++]
+std::valarray<double> parameters{
+    0.0, 0.0,  1.0, 2.0,  3.0, 0.0,  // three 2D controls
+    1.0, 1.0, 1.0,                    // weights
+    0.0, 0.0, 0.0, 2.0, 2.0, 2.0};  // quadratic knots
+nurbs_arr_spline2<double> array_curve(parameters, 2);
+auto shared_array = make_nurbs_arr_spline2<double>(parameters, 2, false);
+\end{lstlisting}
+
+\section{Conversions and definition updates}
+
+Conversions between the ordinary and array-backed representations are
+explicit, copying control points, weights, knots, degree, tolerance, closure,
+and the native parameter domain. They allocate independent storage:
+
+\begin{lstlisting}[language=C++]
+auto ordinary = make_nurbs_spline2<double>(*shared_array);
+auto flattened = make_nurbs_arr_spline2<double>(*ordinary);
+nurbs_spline2<double> ordinary_value(*flattened);
+nurbs_arr_spline2<double> array_value(ordinary_value);
+\end{lstlisting}
+
+The same calls are available for the 3D pair. These conversions never add,
+remove, or reinterpret a coordinate dimension. Converting an array-backed
+definition validates its current public storage; a malformed state throws
+rather than yielding a partially constructed spline.
+
+Ordinary spline definition storage is private. Checked setters preserve the
+degree, validate a complete proposed state, and refresh cached endpoints only
+after success. A failed update leaves the spline unchanged. The array-backed
+alternatives expose scalar storage and derive endpoint state when needed;
+direct edits must be followed by \api{validate()} or a checked geometry
+operation. Chapter~\ref{chap:splines} gives the complete editing and
+evaluation APIs for both representations.

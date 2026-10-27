@@ -1,0 +1,798 @@
+\chapter{Intersections, distances, and numerical tools}
+\label{chap:algorithms}
+
+An intersection query asks where a one-dimensional entity meets a circle,
+sphere, or plane. A distance query asks for a closest point as well as its
+parameter. These two questions share numerical machinery, but their results
+have different meanings: an empty intersection set does not say how far apart
+the entities are, and a distance rounded to zero does not create an intersection
+record.
+
+The examples in this chapter use \api{namespace np = nurbspath;} and
+\api{using REAL = double;}, with the umbrella header included. All native 2D
+queries stay entirely in the 2D world. An explicit \api{project(plane, entity)}
+constructs a 3D entity when an application deliberately wants to cross that
+boundary; it is not an implementation step of a 2D intersection or distance.
+
+\section{Choose a query and its controls}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}l Y l@{}}
+\toprule
+World & Named intersection function & Result type \\
+\midrule
+2D & \api{intersect_ray_circle(ray, circle, settings)} & \api{intersection_result2<REAL>} \\
+2D & \api{intersect_spline_circle(spline, circle, settings)} & \api{intersection_result2<REAL>} \\
+3D & \api{intersect_ray_sphere(ray, sphere, settings)} & \api{intersection_result3<REAL>} \\
+3D & \api{intersect_ray_plane(ray, plane, settings)} & \api{intersection_result3<REAL>} \\
+3D & \api{intersect_spline_sphere(spline, sphere, settings)} & \api{intersection_result3<REAL>} \\
+3D & \api{intersect_spline_plane(spline, plane, settings)} & \api{intersection_result3<REAL>} \\
+\bottomrule
+\end{tabularx}
+\caption{The six supported intersection pairs. Each also has an
+\api{intersect(first, second, settings)} convenience overload with the same
+argument order and behavior.}
+\label{tab:intersection-pairs}
+\end{table}
+
+The first argument is always the ray or ordinary NURBS spline. These overloads
+do not provide arbitrary entity-pair intersections: there is no ray--ray,
+spline--spline, sphere--sphere, circle--circle, or reversed-argument overload.
+For an array-backed spline, first construct its corresponding ordinary spline
+explicitly; that conversion validates the current public array storage.
+
+\needspace{12\baselineskip}
+\subsection{Two tolerances, two different units}
+
+\api{numerical_settings<REAL>} carries all controls for numerical
+intersections and point-to-spline distances. The defaults are:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+np::numerical_settings<REAL> settings;
+// residual_tolerance = 1.0000e-08
+// parameter_tolerance = 1.0000e-10
+// max_iterations = 100
+// sample_count = 256
+
+settings.residual_tolerance = 1.0000e-07;
+settings.parameter_tolerance = 1.0000e-09;
+settings.sample_count = 512;
+settings.validate();
+\end{lstlisting}
+\end{minipage}\par
+\api{residual_tolerance} is measured in the units of the supplied function's
+result. For the library's surface intersections, the residual is a signed
+world distance; for \api{find_roots} it has whatever units the callable returns.
+\api{parameter_tolerance} measures a parameter interval. For spline queries it
+uses the original knot-domain units, not a normalized fraction of the domain.
+Changing a spline's native domain therefore changes the interpretation of a
+fixed parameter tolerance.
+
+\api{sample_count} is the number of initial uniform intervals, so a sampled
+search evaluates \api{sample_count + 1} initial positions. The iteration limit
+applies to each refinement, rather than being a budget shared by all contacts
+or local minima. Increase sampling density when a curve or residual oscillates
+rapidly, has tightly spaced contacts, or has narrow distance minima.
+
+\api{validate()} throws \api{std::invalid_argument} unless both tolerances are
+finite and strictly positive, \api{max_iterations} is positive, and
+\api{sample_count} is at least two. The numerical query functions call this
+validation themselves. A larger iteration budget sharpens a basin that was
+found; it cannot recover a basin that the initial sampling missed.
+
+\begin{manualnote}[What a sampled answer guarantees]
+Sampling and local refinement provide useful coverage controlled by
+\api{sample_count}. They do not establish an unconditional continuous global
+guarantee for every NURBS curve or user-supplied function. Check stability under
+increased sampling when the application requires confidence that all contacts
+or the smallest distance have been found.
+\end{manualnote}
+
+\section{Read an intersection result}
+
+\api{intersection_kind} has three values. \api{none} means that the query found
+no contact in its searched domain; \api{discrete} means that isolated contacts
+are listed; \api{coincident} denotes a continuous overlap that a finite list of
+points cannot represent. A coincident result deliberately has an empty
+\api{points} vector. Thus \api{points.empty()} alone cannot distinguish no
+contact from continuous overlap. Use \api{has_intersection()} to accept either
+kind of contact, and \api{is_coincident()} to branch on continuous overlap.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}l Y Y@{}}
+\toprule
+Field & \api{intersection2<REAL>} & \api{intersection3<REAL>} \\
+\midrule
+\api{point} & Contact position in 2D & Contact position in 3D \\
+\api{s} & Native ray or spline parameter & Native ray or spline parameter \\
+\api{u} & Circle angle in $[0,2\pi)$ & Sphere longitude or plane $u$ coordinate \\
+\api{v} & Not present & Sphere latitude or plane $v$ coordinate \\
+\api{residual} & Absolute circle-distance residual & Absolute sphere- or plane-distance residual \\
+\bottomrule
+\end{tabularx}
+\caption{A contact preserves both the world position and the participating
+entities' parameters. Sphere latitude lies in $[-\pi/2,\pi/2]$; plane parameters
+are lengths along its orthonormal local frame.}
+\end{table}
+
+The vector \api{points} is sorted by increasing \api{s}. Numerically close
+root parameters are merged; the root solver's merge threshold is the greater
+of four parameter tolerances and a roundoff allowance proportional to the
+search interval. This is a parameter-based rule, not a promise to merge every
+pair of spatially close points. A self-intersecting spline can visit the same
+world position at two distinct native parameters, and those visits can remain
+two distinct contacts.
+
+\begin{figure}[htbp]
+\centering
+\begin{minipage}{0.48\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=\linewidth,height=5.0cm,axis equal image,
+ xmin=-3.3,xmax=1.5,ymin=-1.45,ymax=1.55,
+ axis lines=middle,xlabel={$x$},ylabel={$y$},
+ ticks=none,clip=false]
+\addplot[manualblue,thick,domain=0:360,samples=97]
+ ({cos(x)},{sin(x)});
+\addplot[manualred,thick,-{Stealth}] coordinates {(-3,0) (1.35,0)};
+\addplot[only marks,mark=*,mark size=2.4pt,manualink]
+ table[x index=1,y index=2] {pictures/intersection_crossing.dat};
+\node[below left] at (axis cs:-3,0) {$O$};
+\node[below] at (axis cs:-1,0) {$s=1$};
+\node[below] at (axis cs:1,0) {$s=2$};
+\node[above] at (axis cs:-1.9,0) {$\mathbf d=(2,0)$};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}\hfill
+\begin{minipage}{0.48\linewidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=\linewidth,height=5.0cm,axis equal image,
+ xmin=-2.4,xmax=1.5,ymin=-1.45,ymax=1.55,
+ axis lines=middle,xlabel={$x$},ylabel={$y$},
+ ticks=none,clip=false]
+\addplot[manualblue,thick,domain=0:360,samples=97]
+ ({cos(x)},{sin(x)});
+\addplot[manualred,thick,-{Stealth}] coordinates {(-2,1) (1.35,1)};
+\addplot[only marks,mark=*,mark size=2.4pt,manualink]
+ table[x index=1,y index=2] {pictures/intersection_tangent.dat};
+\node[above left] at (axis cs:-2,1) {$O$};
+\node[above right] at (axis cs:0,1) {$s=2$};
+\node[below left] at (axis cs:-0.75,1) {$\mathbf d=(1,0)$};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}\par
+\caption{Crossing and tangent ray--circle contacts. The black points are
+computed by the library; TikZ constructs the unit circles and rays. The tangent
+contact has no residual sign change.}
+\label{fig:ray-circle-contacts}
+\end{figure}
+
+\section{Rays: forward domains and direction scales}
+
+\subsection{A ray through a circle or sphere}
+
+The ray equation is $R(s)=O+s\mathbf d$, with $s\geq0$. A direction is
+not normalized by the entity. For the left-hand example in
+Figure~\ref{fig:ray-circle-contacts}, each increase of one in $s$ moves two
+world units. This gives the two unit-circle contacts at $s=1$ and $s=2$.
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const np::ray2<REAL> ray{{-3, 0}, {2, 0}};
+const np::circle2<REAL> circle{{0, 0}, 1};
+const auto hits = np::intersect_ray_circle(ray, circle);
+// Equivalent: np::intersect(ray, circle)
+
+std::cout << std::scientific << std::setprecision(4);
+if (hits.kind == np::intersection_kind::discrete) {
+    for (const auto& hit : hits.points) {
+        std::cout << hit.s << ' ' << hit.point.x << ' '
+                  << hit.point.y << '\n';
+    }
+}
+\end{lstlisting}
+\end{minipage}\par
+The rounded output is:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+1.0000e+00 -1.0000e+00 0.0000e+00
+2.0000e+00  1.0000e+00 0.0000e+00
+\end{lstlisting}
+\end{minipage}\par
+The 3D counterpart changes the target from a circle to a sphere:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const np::ray3<REAL> ray3{{-3, 0, 0}, {2, 0, 0}};
+const np::sphere3<REAL> sphere{{0, 0, 0}, 1};
+const auto sphere_hits = np::intersect_ray_sphere(ray3, sphere);
+// Equivalent: np::intersect(ray3, sphere)
+\end{lstlisting}
+\end{minipage}\par
+Both radial queries refine the signed distance
+\[
+ f(t)=\|O+t\widehat{\mathbf d}-C\|-r
+\]
+using world-distance travel $t$, then return the native parameter
+$s=t/\|\mathbf d\|$. The finite forward search extends to
+$\|O-C\|+r+\varepsilon_r$. Scaling the direction by a positive factor therefore
+preserves world contacts while dividing their native $s$ values by that factor.
+A negative factor reverses the forward half-line and can change the set of
+contacts. A ray starting inside a circle or sphere normally has one forward
+exit; a ray pointing away from the target may have none. Contact at the ray
+origin is included.
+
+\subsection{A ray and an infinite plane}
+
+\api{intersect_ray_plane} uses the plane's unit normal and the signed
+world-distance residual $f(s)=\widehat{\mathbf n}\mathbin{\cdot}(R(s)-P_0)$.
+The native rate of change is $\mathbf d\mathbin{\cdot}\widehat{\mathbf n}$.
+If that rate is exactly zero, an origin within residual tolerance gives
+\api{coincident}; otherwise the result is \api{none}. This parallel test uses
+a zero normal component rather than comparing the direction's magnitude to a
+tolerance.
+
+For a nonzero rate, an origin already within tolerance is an isolated contact
+at $s=0$. Otherwise a negative estimated contact parameter means that the
+plane is behind the ray. A forward contact is bracketed and refined through
+the shared numerical root search. Refinement tightens the parameter tolerance
+where needed for a large normal-direction rate.
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const np::plane3<REAL> plane{{0, 0, 0}, {0, 0, 1}};
+const np::ray3<REAL> toward{{0.5, 0.25, 2}, {0, 0, -2}};
+const auto plane_hit = np::intersect_ray_plane(toward, plane);
+// Equivalent: np::intersect(toward, plane)
+// One contact: s = 1, world point (0.5, 0.25, 0).
+
+const np::ray3<REAL> parallel{{0, 0, 2}, {1, 0, 0}};
+const np::ray3<REAL> contained{{0, 0, 0}, {1, 0, 0}};
+const auto no_hit = np::intersect(parallel, plane);
+const auto overlap = np::intersect(contained, plane);
+// no_hit.kind == intersection_kind::none
+// overlap.is_coincident() && overlap.points.empty()
+\end{lstlisting}
+\end{minipage}\par
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\small]
+\foreach \x/\title in {0/{forward crossing},4.7/{parallel, separated},9.4/{contained ray}} {
+  \begin{scope}[shift={(\x,0)}]
+    \fill[manualteal!10] (-1.65,-0.18) -- (0.95,-0.18) -- (1.65,0.35) -- (-0.95,0.35) -- cycle;
+    \draw[manualteal] (-1.65,-0.18) -- (0.95,-0.18) -- (1.65,0.35) -- (-0.95,0.35) -- cycle;
+    \node at (0,-0.72) {\title};
+  \end{scope}
+}
+\draw[manualred,thick,-{Stealth}] (-0.7,1.65) -- (0.55,-0.7);
+\fill[manualink] (0.18,0) circle (2pt);
+\draw[manualred,thick,-{Stealth}] (3.25,1.2) -- (6.15,1.2);
+\draw[manualred,thick,-{Stealth}] (8.0,0.08) -- (10.65,0.08);
+\node[manualmuted] at (0,2) {\api{discrete}};
+\node[manualmuted] at (4.7,2) {\api{none}};
+\node[manualmuted] at (9.4,2) {\api{coincident}};
+\end{tikzpicture}
+\caption{The three ray--plane classifications. The drawn patch represents an
+infinite plane; its finite outline is only a diagram aid.}
+\label{fig:ray-plane-cases}
+\end{figure}
+
+\section{Splines: crossings, tangencies, and continuous contact}
+
+The three spline queries evaluate the full active interval
+$[s_{\min},s_{\max}]$. Their residuals follow the target surface:
+\begin{itemize}
+\item \api{intersect_spline_circle} uses a 2D radial distance.
+\item \api{intersect_spline_sphere} uses a 3D radial distance.
+\item \api{intersect_spline_plane} uses the plane's signed distance.
+\end{itemize}
+Their \api{intersect} aliases preserve exactly these domains and meanings.
+
+A compact degree-one example makes the native domain visible:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const np::nurbs_spline2<REAL> segment2{
+    std::vector<np::point2<REAL>>{{-2, 0}, {2, 0}},
+    std::vector<REAL>{1, 1},
+    std::vector<REAL>{10, 10, 14, 14}, 1};
+const np::circle2<REAL> unit_circle{{0, 0}, 1};
+const auto circle_hits = np::intersect_spline_circle(
+    segment2, unit_circle, settings);
+// Native s values are approximately 11 and 13, not 0.25 and 0.75.
+
+const np::nurbs_spline3<REAL> segment3{
+    std::vector<np::point3<REAL>>{{-2, 0, 0}, {2, 0, 0}},
+    std::vector<REAL>{1, 1},
+    std::vector<REAL>{10, 10, 14, 14}, 1};
+const np::sphere3<REAL> unit_sphere{{0, 0, 0}, 1};
+const np::plane3<REAL> yz_plane{{0, 0, 0}, {1, 0, 0}};
+const auto sphere_contacts = np::intersect_spline_sphere(
+    segment3, unit_sphere, settings);
+const auto plane_contact = np::intersect_spline_plane(
+    segment3, yz_plane, settings);
+// Sphere: s approximately 11 and 13. Plane: s approximately 12.
+\end{lstlisting}
+\end{minipage}\par
+Endpoints are included. A tangent contact may have residual zero with the same
+sign on both sides, so the search does more than look for sign changes. It also
+refines sampled local minima of the absolute residual. Increasing
+\api{sample_count} remains necessary when tangencies lie in narrow or crowded
+features.
+
+Before returning isolated roots, each spline query checks whether the surface
+residual stays within tolerance at a uniform set of
+$\max(\api{sample_count},16)+1$ points. If so, it returns \api{coincident}.
+This classification is numerical and sampled: it is not an algebraic proof
+that the entire rational curve lies on the surface. A spline contained in a
+plane or tracing a circle on a sphere is a natural use case.
+
+For a spline explicitly marked closed, a root at the last active parameter is
+removed when roots are already present within parameter tolerance of both
+domain ends. The first-end contact remains as the seam representative. Closure
+does not mean that arbitrary equal world positions elsewhere on the curve are
+merged, and it does not itself imply periodic derivatives.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\small]
+\begin{scope}
+\draw[manualblue,thick] (0,0) circle (1.35);
+\draw[manualteal,thick] (-1.85,0) -- (1.85,0);
+\fill[manualink] (1.35,0) circle (2.6pt);
+\fill[manualink] (-1.35,0) circle (2.6pt);
+\draw[manualorange,-{Stealth}] (1.05,0.85) arc[start angle=39,end angle=115,radius=1.35];
+\node[anchor=west,align=left] at (1.55,0.7) {seam: same position\\$s_{\min}$ retained\\$s_{\max}$ suppressed};
+\draw[manualmuted] (1.45,0.48) -- (1.35,0.08);
+\node at (0,-1.85) {closed curve meeting a surface};
+\end{scope}
+\begin{scope}[shift={(8.6,0)}]
+\fill[manualteal!10] (-1.8,-0.9) -- (1.2,-0.9) -- (1.9,0.8) -- (-1.1,0.8) -- cycle;
+\draw[manualteal] (-1.8,-0.9) -- (1.2,-0.9) -- (1.9,0.8) -- (-1.1,0.8) -- cycle;
+\draw[manualblue,very thick] (-1.25,-0.4) .. controls (-0.6,0.8) and (0.1,-0.75) .. (1.25,0.2);
+\foreach \x/\y in {-1.25/-0.4,-0.75/0.09,-0.2/0.03,0.35/-0.03,0.9/0.07,1.25/0.2}
+ \fill[manualink] (\x,\y) circle (1.6pt);
+\node[align=center] at (0,1.35) {sampled residuals near zero\\\api{coincident}, no finite point list};
+\node at (0,-1.85) {curve contained in a plane};
+\end{scope}
+\end{tikzpicture}
+\caption{Closed-seam deduplication and sampled continuous-contact detection.
+The left-hand surface is shown by its trace through the curve's drawing
+plane. The right-hand dots illustrate residual checks rather than isolated
+intersection records.}
+\label{fig:seam-coincidence}
+\end{figure}
+
+\section{Distances return geometry, not just a number}
+
+The detailed queries in \api{distance.hpp} keep the closest world point and
+its target parameter. The corresponding \api{distance} overload calls the
+detailed function and returns only its \api{distance} field. Argument order is
+always query point first, target entity second.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}l Y Y@{}}
+\toprule
+World & Detailed query & Result and target parameters \\
+\midrule
+2D & \api{distance_to_circle(point, circle, tolerance)} & \api{point_circle_distance2<REAL>}: \api{u} \\
+2D & \api{distance_to_spline(point, spline, settings)} & \api{point_spline_distance2<REAL>}: \api{s} \\
+3D & \api{distance_to_plane(point, plane, tolerance)} & \api{point_surface_distance3<REAL>}: \api{u}, \api{v} \\
+3D & \api{distance_to_sphere(point, sphere, tolerance)} & \api{point_surface_distance3<REAL>}: \api{u}, \api{v} \\
+3D & \api{distance_to_spline(point, spline, settings)} & \api{point_spline_distance3<REAL>}: \api{s} \\
+\bottomrule
+\end{tabularx}
+\caption{Every result also has \api{distance} and \api{closest_point} fields.
+The scalar alternative for each row is
+\api{distance(point, target, tolerance_or_settings)}.}
+\label{tab:distance-pairs}
+\end{table}
+
+All reported distances are nonnegative. When the measured separation is at
+most the contact tolerance, the returned scalar is snapped to zero; the closest
+point and its parameters remain those calculated on the target. A zero result
+therefore permits a small geometric gap. For a spline, the contact tolerance
+is \api{settings.residual_tolerance}; for a circle, sphere, or plane, the
+separate tolerance argument defaults to \api{1.0000e-08}.
+
+\subsection{Circle and sphere: radial closest points}
+
+For a center $C$, radius $r$, and query $Q\ne C$,
+\[
+ P=C+r\frac{Q-C}{\|Q-C\|},\qquad
+ d_{\mathrm{measured}}=\big|\|Q-C\|-r\big|.
+\]
+The expression applies in 2D to a circle and in 3D to a sphere. It finds the
+closest point on the boundary, including when $Q$ is inside. At the center,
+every boundary point is equally near; the library deterministically chooses
+the positive world-$x$ point. Its circle angle is $u=0$, and its spherical
+parameters are $(u,v)=(0,0)$.
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const np::circle2<REAL> circle{{0, 0}, 1};
+const auto radial2 = np::distance_to_circle(
+    np::point2<REAL>{3, 4}, circle);
+// Rounded closest_point = (6.0000e-01, 8.0000e-01).
+// Rounded distance = 4.0000e+00.
+const REAL scalar2 = np::distance(np::point2<REAL>{3, 4}, circle);
+
+const np::sphere3<REAL> sphere{{0, 0, 0}, 1};
+const auto radial3 = np::distance_to_sphere(
+    np::point3<REAL>{0, 0, 3}, sphere);
+// closest_point = (0, 0, 1), distance = 2, v = pi/2.
+const REAL scalar3 = np::distance(np::point3<REAL>{0, 0, 3}, sphere);
+\end{lstlisting}
+\end{minipage}\par
+The circle-distance tolerance must be finite and strictly positive. The
+plane- and sphere-distance overloads reject nonpositive tolerances; applications
+should also supply finite values, consistently with the settings-based queries.
+
+\subsection{Plane: orthogonal closest points}
+
+Let $\widehat{\mathbf n}$ be the unit normal and $P_0$ its parameter origin.
+Then
+\[
+ h=\widehat{\mathbf n}\mathbin{\cdot}(Q-P_0),\qquad
+ P=Q-h\widehat{\mathbf n},\qquad d_{\mathrm{measured}}=|h|.
+\]
+The detailed query returns plane parameters of $P$, so
+\api{plane.point_at(result.u, result.v)} reconstructs the closest position.
+\api{plane.signed_distance_to(point)} remains available when the sign, rather
+than the nonnegative distance query, is required.
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const np::plane3<REAL> plane{
+    np::point3<REAL>{0, 0, 0}, np::vector3<REAL>{0, 0, 1},
+    np::vector3<REAL>{1, 0, 0}};
+const np::point3<REAL> query{2, 3, 4};
+const auto nearest = np::distance_to_plane(query, plane);
+// closest_point = (2, 3, 0), distance = 4, (u,v) = (2,3).
+const REAL separation = np::distance(query, plane);
+\end{lstlisting}
+\end{minipage}\par
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\small]
+\begin{scope}
+\draw[manualblue,thick] (0,0) circle (1.1);
+\fill[manualink] (0,0) circle (2pt) node[below left] {$C$};
+\draw[manualmuted,densely dotted] (0,0) -- (0.66,0.88);
+\draw[manualred,thick] (0.66,0.88) -- (1.65,2.2);
+\fill[manualink] (0.66,0.88) circle (2pt) node[below right] {$P$};
+\fill[manualred] (1.65,2.2) circle (2pt) node[above right] {$Q$};
+\node[above left] at (1.15,1.55) {$d$};
+\fill[manualorange] (-0.33,0.44) circle (2pt) node[left] {$Q_{\rm inside}$};
+\draw[manualorange,thick] (-0.33,0.44) -- (-0.66,0.88);
+\fill[manualink] (-0.66,0.88) circle (2pt);
+\node[align=center] at (0,-1.8) {radial distance to the boundary\\circle or sphere cross-section};
+\end{scope}
+\begin{scope}[shift={(8,0)}]
+\fill[manualteal!10] (-1.9,-0.65) -- (1,-0.65) -- (2,0.5) -- (-0.9,0.5) -- cycle;
+\draw[manualteal] (-1.9,-0.65) -- (1,-0.65) -- (2,0.5) -- (-0.9,0.5) -- cycle;
+\draw[manualred,thick] (0,0) -- (0,2.1);
+\draw[manualmuted] (0.2,0) -- (0.2,0.2) -- (0,0.2);
+\fill[manualink] (0,0) circle (2pt) node[below] {$P$};
+\fill[manualred] (0,2.1) circle (2pt) node[above] {$Q$};
+\draw[manualteal,-{Stealth}] (1.2,0.1) -- (1.2,1.2) node[above] {$\widehat{\mathbf n}$};
+\node[right] at (0.05,1.1) {$|h|$};
+\node[align=center] at (0,-1.8) {orthogonal distance to an infinite plane\\$(u,v)$ describe the foot point $P$};
+\end{scope}
+\end{tikzpicture}
+\caption{Analytic closest points for radial surfaces and planes. These
+distances need no sampling. Interior radial queries still measure to the
+surface, rather than returning zero throughout the filled region.}
+\label{fig:analytic-distances}
+\end{figure}
+
+\section{Closest points on NURBS splines}
+
+\api{distance_to_spline} minimizes the squared Euclidean separation
+$D(s)=\|Q-C(s)\|^2$ over the active knot domain. Both 2D and 3D forms evaluate
+the initial samples, retain the best sample, then refine each sampled local
+basin using golden-section minimization. The first and last sample are also
+eligible basins, with refinement over the adjacent boundary interval. This
+matters when the true nearest point lies just inside an endpoint.
+
+The same rational curve used in Chapter~\ref{chap:splines} provides a more
+interesting distance example than a straight line:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const np::nurbs_spline2<REAL> curve{
+    std::vector<np::point2<REAL>>{
+        {0, 0}, {1, 2}, {2, -1}, {3, 2}, {4, 0}},
+    std::vector<REAL>{1, 1, 0.7, 1.5, 1},
+    std::vector<REAL>{0, 0, 0, 0, 2, 5, 5, 5, 5}, 3};
+const np::point2<REAL> query{2, 2.5};
+const auto closest = np::distance_to_spline(query, curve, settings);
+const REAL only_distance = np::distance(query, curve, settings);
+
+// closest.s stays in the original [0,5] knot domain.
+// curve.evaluate(closest.s) reproduces closest.closest_point.
+\end{lstlisting}
+\end{minipage}\par
+Figure~\ref{fig:spline-closest} uses points evaluated by the library itself.
+The target parameter remains the native $s$, even if its units were inherited
+from interpolation stations. Neither the reported closest point nor the
+distance query renormalizes the knot vector.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=0.88\linewidth,height=6.0cm,axis equal image,
+ xmin=-0.2,xmax=4.2,ymin=-0.3,ymax=2.9,
+ axis lines=left,xlabel={$x$},ylabel={$y$},
+ xtick={0,1,2,3,4},ytick={0,1,2},grid=major,
+ grid style={manualmuted!15},legend style={draw=none,font=\small},
+ legend pos=south east]
+\addplot[manualblue,very thick] table[x index=1,y index=2] {pictures/spline_curve.dat};
+\addlegendentry{rational spline $C(s)$}
+\addplot[manualred,thick,densely dashed,mark=*,mark size=2.3pt]
+ table[x index=0,y index=1] {pictures/distance_reference.dat};
+\addlegendentry{query-to-closest segment}
+\node[above] at (axis cs:2,2.5) {$Q=(2,2.5)$};
+\end{axis}
+\end{tikzpicture}
+\caption{A sampled and refined 2D closest point. The curve samples and the two
+endpoints of the red distance segment come from the library reference-data
+generator in \api{manual/pictures/}. The 3D distance overload follows the same
+search strategy in its independent world.}
+\label{fig:spline-closest}
+\end{figure}
+
+The 3D call has the same shape:
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const np::nurbs_spline3<REAL> segment{
+    std::vector<np::point3<REAL>>{{0, 0, 0}, {1, 0, 0}},
+    std::vector<REAL>{1, 1},
+    std::vector<REAL>{0, 0, 1, 1}, 1};
+const auto near_start = np::distance_to_spline(
+    np::point3<REAL>{0.001, 0, 0}, segment, settings);
+// closest point is just inside the segment, not its start endpoint.
+// Reported distance is zero within residual_tolerance.
+\end{lstlisting}
+\end{minipage}\par
+Endpoint retention prevents a refinement from discarding a true boundary
+minimum, while boundary-interval refinement can improve a coarse endpoint
+sample to an interior minimum. Multiple sampled minima are compared; no unique
+closest-point guarantee is made for equal minima. In particular, a closed seam
+or a symmetric curve can have more than one equally good parameter, while the
+result type intentionally returns one.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\small]
+\draw[manualmuted,-{Stealth}] (-0.2,0) -- (11.8,0) node[right] {$s$};
+\draw[manualmuted,-{Stealth}] (0,-0.1) -- (0,2.35) node[above] {$D(s)$};
+\draw[manualblue,very thick] plot[smooth] coordinates {
+ (0,0.75) (0.35,0.30) (0.7,0.22) (1.2,0.48) (2,1.4)
+ (3,1.95) (4,1.15) (5,0.8) (6,1.05) (7,1.8)
+ (8,1.5) (9,0.60) (10,0.30) (11,0.55)};
+\foreach \x/\y in {0/0.75,2/1.4,4/1.15,6/1.05,8/1.5,10/0.30,11/0.55}
+ \fill[manualink] (\x,\y) circle (2pt);
+\draw[manualorange,line width=2pt] (0,-0.24) -- (2,-0.24);
+\draw[manualteal,line width=2pt] (8,-0.24) -- (11,-0.24);
+\fill[manualred] (0.63,0.21) circle (2.5pt);
+\draw[manualred,-{Stealth}] (1.2,2.25) -- (0.65,0.35);
+\node[anchor=west] at (1.2,2.25) {refine boundary interval};
+\node[below,align=center] at (1,-0.32) {first sample can be a local basin\\despite an interior true minimum};
+\node[below,align=center] at (9.5,-0.32) {refine another sampled basin\\compare candidate distances};
+\end{tikzpicture}
+\caption{Why closest-point searches refine more than the single best sample.
+This schematic squared-distance graph illustrates a minimum near the beginning
+of the domain and another basin near its end. It is not an additional library
+test curve.}
+\label{fig:distance-basins}
+\end{figure}
+
+\section{Reusable scalar algorithms}
+
+The utilities in \api{utility.hpp} are public and independent of a particular
+geometry class. Their callable parameters accept a scalar and return a scalar.
+The application is responsible for choosing meaningful units, finite working
+ranges, and functions compatible with the search assumptions.
+
+\subsection{Find all sampled roots, including even-multiplicity contacts}
+
+\api{find_roots<REAL>(function, lower, upper, settings)} requires a strictly
+increasing interval. It samples that interval, refines sign changes with
+bisection, and minimizes absolute residual near sampled sign-preserving local
+minima. Contiguous within-tolerance sample bands are represented by a single
+best candidate, avoiding a separate result for every sample on a flat contact.
+The final roots are sorted and tolerance-deduplicated.
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const auto function = [](REAL x) {
+    return (x + 0.8) * np::square(x - 0.3) * (x - 1.2);
+};
+const auto roots = np::find_roots<REAL>(
+    function, -1.5, 1.6, settings);
+for (REAL root : roots) {
+    std::cout << std::scientific << std::setprecision(4)
+              << root << '\n';
+}
+\end{lstlisting}
+\end{minipage}\par
+The three expected roots, shown as rounded reference values, are
+$-8.0000\times10^{-1}$, $3.0000\times10^{-1}$, and
+$1.2000\times10^{0}$. The middle root is double and does not change the sign
+of the residual. \api{find_roots} rejects invalid settings or a nonpositive
+interval length with \api{std::invalid_argument}; a nonfinite initial sample
+value raises \api{std::domain_error}. A discontinuous callable or a nonfinite
+value encountered during refinement falls outside a well-behaved root-search
+problem; do not treat a sign change across a discontinuity as a root proof.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=0.88\linewidth,height=5.7cm,
+ xmin=-1.5,xmax=1.6,ymin=-0.7,ymax=2.1,
+ axis lines=middle,xlabel={$x$},ylabel={$f(x)$},
+ xtick={-0.8,0.3,1.2},xticklabels={$-0.8$,$0.3$,$1.2$},
+ ytick={0,1,2},grid=major,grid style={manualmuted!15},clip=true]
+\addplot[manualblue,very thick] table[x index=0,y index=1] {pictures/algorithmroots.dat};
+\addplot[only marks,mark=*,mark size=2.6pt,manualred]
+ coordinates {(-0.8,0) (0.3,0) (1.2,0)};
+\node[anchor=south,align=center] at (axis cs:0.3,0.2) {double root\\no sign change};
+\draw[manualred,-{Stealth}] (axis cs:0.3,0.18) -- (axis cs:0.3,0.035);
+\end{axis}
+\end{tikzpicture}
+\caption{The scalar residual
+$f(x)=(x+0.8)(x-0.3)^2(x-1.2)$. Its sampled graph is generated by C++ using
+the library's scalar helper; TikZ marks the known reference roots. Sign changes
+alone would miss the contact at $x=0.3$.}
+\label{fig:scalar-roots}
+\end{figure}
+
+\subsection{Refine one sign-changing bracket}
+
+\api{bisect_root<REAL>(function, lower, upper, settings)} accepts endpoints in
+either order. An endpoint whose absolute residual is already within tolerance
+is returned immediately. Otherwise the endpoints must have opposite residual
+signs, or \api{std::invalid_argument} is thrown. Each iteration keeps the
+half-interval that still brackets the sign change. The function returns when
+the residual is small enough, the interval is narrow enough, or the iteration
+budget has been used.
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const REAL root_two = np::bisect_root<REAL>(
+    [](REAL x) { return np::square(x) - 2; }, 1, 2, settings);
+// Rounded: 1.4142e+00
+\end{lstlisting}
+\end{minipage}\par
+The return type is a parameter alone: it does not carry an iteration count or
+a convergence flag. In particular, reaching the parameter tolerance or the
+iteration limit does not independently establish a small residual. Evaluate
+the returned residual if the application requires that additional check.
+Bisection is appropriate for a continuous sign-changing bracket; use the
+sampled root finder to seek an unbracketed tangent contact.
+
+\subsection{Minimize one bounded basin}
+
+\api{golden_section_minimize<REAL>(function, lower, upper, settings)} also
+accepts reversed endpoints. Two interior probes progressively contract a
+closed interval, reusing one function value after each comparison. It returns
+the center of the final interval, stopping at the parameter tolerance or
+iteration limit. A unimodal objective over the chosen interval is the useful
+working assumption. The function does not search every local minimum of an
+arbitrary multi-basin objective, and it does not separately select endpoint
+values; callers needing boundary minima should compare the endpoints too.
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const REAL minimum_x = np::golden_section_minimize<REAL>(
+    [](REAL x) { return np::square(x - 0.75) + 2; },
+    -1, 2, settings);
+// Rounded minimizer: 7.5000e-01; objective value: 2.0000e+00.
+\end{lstlisting}
+\end{minipage}\par
+Both refiners call \api{settings.validate()}. Golden-section search uses
+\api{parameter_tolerance} and \api{max_iterations} to stop; changing
+\api{residual_tolerance} does not supply a separate objective-value stopping
+rule. It is nevertheless validated as part of the settings object.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\small]
+\begin{scope}
+\draw[manualmuted,-{Stealth}] (-0.3,0) -- (5.8,0);
+\draw[manualblue,thick] (-0.05,-0.8) .. controls (1.3,-0.7) and (3.8,0.9) .. (5.45,1.1);
+\draw[manualink,thick] (0,-0.12) -- (0,0.12) node[above=3pt] {$a$};
+\draw[manualink,thick] (5.4,-0.12) -- (5.4,0.12) node[below=3pt] {$b$};
+\draw[manualorange,densely dashed] (2.7,-0.95) -- (2.7,1.05);
+\node[below] at (2.7,-0.95) {$m=(a+b)/2$};
+\draw[manualteal,line width=2pt] (0,-1.65) -- (2.7,-1.65);
+\node[below,align=center] at (2.7,-1.75) {retain the sign-changing half\\bisection};
+\end{scope}
+\begin{scope}[shift={(7,0)}]
+\draw[manualmuted,-{Stealth}] (-0.3,0) -- (5.8,0);
+\draw[manualblue,thick] (0,1.3) .. controls (1.2,-0.8) and (2.7,-1.0) .. (5.4,1.25);
+\draw[manualink,thick] (0,-0.12) -- (0,0.12) node[below=3pt] {$a$};
+\draw[manualink,thick] (5.4,-0.12) -- (5.4,0.12) node[below=3pt] {$b$};
+\draw[manualorange,densely dashed] (2.06,-1) -- (2.06,0.65);
+\draw[manualorange,densely dashed] (3.34,-1) -- (3.34,0.65);
+\node[above] at (2.06,0.65) {$\ell$};
+\node[above] at (3.34,0.65) {$r$};
+\draw[manualteal,line width=2pt] (0,-1.65) -- (3.34,-1.65);
+\node[below,align=center] at (2.7,-1.75) {if $f(\ell)\leq f(r)$, retain $[a,r]$\\golden-section minimization};
+\end{scope}
+\end{tikzpicture}
+\caption{A root refiner and a minimum refiner answer different questions.
+The green segments show one possible retained interval. The diagrams are
+schematic; neither refiner reports a continuous global-search certificate.}
+\label{fig:scalar-refiners}
+\end{figure}
+
+\section{Linear systems and small helpers}
+
+\subsection{Solve a square system}
+
+\api{solve_linear_system(matrix, right_hand_side, pivot_tolerance)} solves
+$A\mathbf x=\mathbf b$ by elimination with scaled partial pivoting. Each row's
+largest absolute entry supplies a scale, so the pivot comparison is relative
+to that row's magnitude. The matrix and right-hand-side arguments are passed
+by value and copied for elimination; the caller's containers are preserved.
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+const std::vector<std::vector<REAL>> matrix{{2, 1}, {1, 3}};
+const std::vector<REAL> right_hand_side{5, 10};
+const auto solution = np::solve_linear_system(matrix, right_hand_side);
+// Rounded solution: {1.0000e+00, 3.0000e+00}.
+\end{lstlisting}
+\end{minipage}\par
+The default pivot rejection threshold is
+$64\,\api{std::numeric_limits<REAL>::epsilon()}$. The function requires a
+nonempty square matrix and a matching right-hand side, otherwise it throws
+\api{std::invalid_argument}. A zero row or a pivot too small relative to its
+row scale raises \api{std::domain_error}, identifying a singular or rejected
+ill-conditioned system. Use finite coefficients and a sensible finite
+nonnegative pivot threshold; this is a small dense solver, not a rank-revealing
+factorization or a condition-number estimator. Global interpolation uses this
+reusable solver rather than duplicating it inside spline classes.
+
+\subsection{Square, absolute comparison, and definition sizing}
+
+\api{square(value)} returns \api{value * value}; it is \api{constexpr} and
+\api{noexcept}, with ordinary floating-point range and rounding behavior.
+It does not trap an overflow. \api{approximately_equal(first, second, tolerance)}
+returns whether the absolute difference is at most the supplied tolerance.
+It performs no relative scaling and does not validate the tolerance. Select a
+nonnegative tolerance in the compared quantities' units. For example, a fixed
+absolute tolerance suitable for millimeter coordinates need not suit the same
+data expressed in kilometers.
+
+\api{nurbs_knot_count(degree, control_point_count)} returns
+$C+p+1$. It is shared by both worlds and both spline storage forms. The degree
+must be positive and smaller than the control-point count; invalid values
+raise \api{std::invalid_argument}. An unrepresentable result raises
+\api{std::overflow_error}. This helper sizes the complete knot vector; it does
+not generate knot values or decide whether a candidate vector is clamped.
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+constexpr std::size_t knots_needed = np::nurbs_knot_count(3, 5);
+static_assert(knots_needed == 9);
+const REAL area_factor = np::square(REAL(2.5));
+const bool close = np::approximately_equal(
+    REAL(1), REAL(1) + REAL(5.0000e-09), REAL(1.0000e-08));
+// area_factor rounds to 6.2500e+00; close is true.
+\end{lstlisting}
+\end{minipage}\par
+
+For two points in the same world, \api{distance_squared(first, second)} and
+\api{distance(first, second)} are also available from their point headers.
+They return ordinary squared Euclidean distance and Euclidean distance,
+respectively, without contact snapping or a search. Unlike the target-entity
+distance overloads, they need neither a tolerance nor numerical settings.
+
+\begin{manualnote}[A practical verification pattern]
+Preserve the parameters and world positions from detailed results when they
+matter to downstream work. Re-evaluate the entity at those parameters, inspect
+the residual, and repeat sampled queries at higher sampling density when
+coverage is uncertain. Round only presentation output; keep the underlying
+floating-point values for subsequent calculations and persistence.
+\end{manualnote}

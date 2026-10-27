@@ -1,0 +1,124 @@
+\chapter{Reading and using the library}\label{chap:foundations}
+\section{Scope and a first working program}
+\api{nurbspath} is a dependency-free, header-only C++20 library. Its geometry
+types use a scalar template parameter constrained by \api{std::floating_point};
+\api{float}, \api{double}, and \api{long double} are valid choices. Include
+\api{nurbspath/nurbspath.hpp} for the complete API or a focused public header
+for a smaller translation unit.
+
+This manual describes the source snapshot printed on the title page. Chapters
+\ref{chap:entities}--\ref{chap:output} explain the public operations by purpose;
+Appendix~\ref{chap:reference} records individual overloads, defaults, result
+types, and public data members extracted from those headers. Internal
+\api{nurbspath::detail} helpers are implementation, not a public contract.
+
+\begin{lstlisting}
+#include <nurbspath/config.hpp>
+#include <nurbspath/nurbspath.hpp>
+#include <iomanip>
+#include <iostream>
+
+int main() {
+    namespace np = nurbspath;
+    using REAL = double;
+    const np::circle2<REAL> circle({0.0, 0.0}, 1.0);
+    const np::ray2<REAL> ray({-3.0, 0.0}, {2.0, 0.0});
+    const auto result = np::intersect(ray, circle);
+    std::cout << std::scientific << std::setprecision(4);
+    for (const auto& hit : result.points) {
+        std::cout << "s=" << hit.s << " point=" << hit.point << '\n';
+    }
+}
+\end{lstlisting}
+\begin{lstlisting}[style=plain]
+s=1.0000e+00 point=-1.0000e+00 0.0000e+00
+s=2.0000e+00 point=1.0000e+00 0.0000e+00
+\end{lstlisting}
+The ray direction has length two, so the native parameter is half the travelled
+world distance. Compile this program directly with the source include directory:
+\begin{lstlisting}[style=plain]
+c++ -std=c++20 -I../include first_query.cpp -o first_query
+\end{lstlisting}
+This command is shown relative to the manual directory. The manual's own
+reproducible reference programs and build instructions are in
+Appendix~\ref{chap:reproduction}.
+
+\section{Two independent Cartesian worlds}
+\begin{tabularx}{\linewidth}{@{}lYY@{}}
+\toprule
+Concept & Independent 2D world & Shared 3D world\\
+\midrule
+Position & \api{point2<REAL>} & \api{point3<REAL>}\\
+Offset or direction & \api{vector2<REAL>} & \api{vector3<REAL>}\\
+Forward line & \api{ray2<REAL>} & \api{ray3<REAL>}\\
+Round surface & \api{circle2<REAL>} & \api{sphere3<REAL>}\\
+Rational path & \api{nurbs_spline2<REAL>} & \api{nurbs_spline3<REAL>}\\
+Array-backed path & \api{nurbs_arr_spline2}\newline\api{<REAL>} & \api{nurbs_arr_spline3}\newline\api{<REAL>}\\
+Plane & No 2D plane entity & \api{plane3<REAL>}\\
+\bottomrule
+\end{tabularx}
+
+A point represents a location; a vector represents an offset or direction.
+Point subtraction gives a vector, point plus vector gives a point, and vector
+arithmetic remains vector arithmetic. A 2D entity does not implicitly become
+a 3D entity. The explicit bridge is \api{project(plane, entity2)}, described in
+Chapter~\ref{chap:entities}. Queries on 2D entities compute entirely in 2D.
+
+\section{Units, parameters, and tolerances}
+The library does not prescribe metres, millimetres, or another length unit.
+Choose one consistent world unit. Angles are in radians. Display widths and
+text sizes are separate consumer-selected display units.
+
+\begin{tabularx}{\linewidth}{@{}lYY@{}}
+\toprule
+Entity & Parameter domain & Meaning\\
+\midrule
+Ray & $s\geq0$ for forward queries & $O+s\vect d$; direction is unnormalised.\\
+Spline & $[t_p,t_C]$ & Active knot interval; $C$ is the number of controls.\\
+Circle & $u\in[0,2\pi)$ & Counterclockwise angle from positive $x$.\\
+Sphere & $u\in[0,2\pi)$, $v\in[-\pi/2,\pi/2]$ & Longitude and latitude.\\
+Plane & $(u,v)\in\Real^2$ & Orthonormal local coordinates.\\
+\bottomrule
+\end{tabularx}
+
+The ray's evaluation formula can be evaluated for negative $s$, but intersection
+queries treat it as a forward half-line. Spline parameters remain native:
+interpolation preserves the supplied stations, and plane embedding preserves
+the same $s$ values. A spline parameter is not automatically a physical arc
+length everywhere between interpolation stations.
+
+\begin{manualnote}[What a tolerance controls]
+Definition tolerances validate entity construction and parameter boundaries.
+\api{numerical_settings<REAL>} separately controls function residuals,
+parameter intervals, iteration counts, and sampling density. These quantities
+have different units. Sampling-based intersections, spline distances, and arc
+length estimates depend on their chosen sample counts; a finite sampling run
+does not prove a continuous global result for every possible curve.
+\end{manualnote}
+
+\section{Values, shared ownership, and checked editing}
+Construct entities as ordinary values for simple ownership. The
+\api{make_*} functions in \api{creators.hpp} mirror geometry constructors and
+return \api{std::shared_ptr} objects. They preserve constructor validation and
+exceptions. They do not introduce a common geometry base class.
+
+Ordinary spline definitions are private and use checked, atomic setters.
+Failed edits leave the old definition intact. Array-backed alternatives
+deliberately expose a \api{std::valarray<REAL>}; direct replacement is allowed,
+so geometry operations validate the current storage and do not rely on stale
+endpoint caches. References returned by getters follow their documented
+invalidation rules.
+
+\section{How the worked figures were made}
+Simple vector, plane, and circle constructions are drawn directly in TikZ.
+Curves, analytic derivatives, interpolation points, intersections, and closest
+points use data generated by \api{pictures/generate_reference.cpp}, which
+includes the library itself. The generator checks its results before writing
+the coordinate files. The stored plot coordinates and displayed output use
+scientific notation with at most four decimal places. The calculations are
+performed in full \api{double} precision before display rounding.
+
+The figures distinguish a mathematical curve from its drawn approximation:
+PGFPlots connects library-evaluated points. Its smooth appearance is not an
+extra numerical guarantee. This manual requires no image downloads, external
+plotting service, shell escape, or TikZ externalisation.

@@ -1,0 +1,86 @@
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=23mm,headheight=15pt,footskip=12mm]{geometry}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx,xcolor}
+\usepackage{booktabs,tabularx,longtable,array}
+\usepackage{enumitem,needspace}
+\usepackage{listings}
+\usepackage{tikz,pgfplots}
+\usetikzlibrary{arrows.meta,calc,angles,quotes,positioning,decorations.pathreplacing,patterns,fit,backgrounds}
+\pgfplotsset{compat=1.18}
+\usepackage[most]{tcolorbox}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{bookmark}
+\definecolor{manualink}{HTML}{173047}
+\definecolor{manualblue}{HTML}{1D5B93}
+\definecolor{manualteal}{HTML}{0F807D}
+\definecolor{manualorange}{HTML}{C46A20}
+\definecolor{manualred}{HTML}{B43A42}
+\definecolor{manualmuted}{HTML}{647486}
+\definecolor{manuallight}{HTML}{F2F6F9}
+\hypersetup{colorlinks=true,linkcolor=manualblue,urlcolor=manualteal,
+  pdftitle={nurbspath - Illustrated C++20 Reference Manual},
+  pdfauthor={nurbspath contributors},pdfsubject={Entities, creation, algorithms, and examples}}
+\DeclareRobustCommand{\api}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\figref}[1]{Figure~\ref{#1}}
+\newcommand{\secref}[1]{Section~\ref{#1}}
+\newcommand{\Real}{\mathbb{R}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newtcolorbox{manualnote}[1][Practical note]{enhanced,breakable,
+  colback=manuallight,colframe=manualteal!50,coltitle=manualink,
+  colbacktitle=manualteal!8,fonttitle=\sffamily\bfseries,title={#1},
+  boxrule=.5pt,arc=1.5mm,left=3mm,right=3mm,top=2mm,bottom=2mm,
+  before upper={\raggedright}}
+\lstdefinestyle{cpp}{language=C++,basicstyle=\ttfamily\small,
+  keywordstyle=\color{manualblue}\bfseries,commentstyle=\color{manualmuted},
+  stringstyle=\color{manualteal},backgroundcolor=\color{manuallight},
+  frame=single,rulecolor=\color{manualblue!20},framesep=6pt,
+  columns=fullflexible,keepspaces=true,showstringspaces=false,
+  breaklines=true,breakatwhitespace=false,tabsize=2,
+  aboveskip=9pt,belowskip=9pt}
+\lstdefinestyle{apireference}{style=cpp,basicstyle=\ttfamily\footnotesize,
+  frame=none,backgroundcolor=\color{manuallight},aboveskip=3pt,
+  belowskip=2pt,framesep=3pt}
+\lstdefinestyle{plain}{style=cpp,language={},basicstyle=\ttfamily\small}
+\lstset{style=cpp}
+\tikzset{axis/.style={-{Stealth[length=2mm]},draw=manualmuted,thin},
+  vector/.style={-{Stealth[length=2.3mm]},draw=manualblue,very thick},
+  curve/.style={draw=manualblue,very thick},
+  control/.style={draw=manualmuted,dashed,thin},
+  guide/.style={draw=manualmuted,densely dashed,thin},
+  point/.style={circle,fill=manualink,inner sep=1.5pt},
+  surface/.style={draw=manualteal,fill=manualteal!9},
+  every node/.style={font=\small}}
+\pgfplotsset{every axis/.append style={
+  tick label style={font=\footnotesize},label style={font=\small},
+  legend style={font=\footnotesize,draw=none,fill=white},
+  axis line style={manualmuted},tick style={manualmuted},
+  grid style={manualmuted!15},width=.88\linewidth,height=6.3cm,
+  unbounded coords=jump}}
+\setlist{itemsep=3pt,topsep=5pt,leftmargin=*}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt plus 1pt}
+\setlength{\emergencystretch}{2em}
+\setcounter{tocdepth}{1}
+\setcounter{secnumdepth}{2}
+\renewcommand{\arraystretch}{1.16}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\sffamily\small\color{manualmuted}nurbspath / Illustrated reference}
+\fancyhead[R]{\sffamily\small\color{manualmuted}\nouppercase{\leftmark}}
+\fancyfoot[L]{\sffamily\footnotesize\color{manualmuted}C++20 / library \ManualVersion}
+\fancyfoot[R]{\sffamily\small\thepage}
+\renewcommand{\headrulewidth}{.3pt}
+\renewcommand{\chaptermark}[1]{\markboth{\thechapter\quad #1}{}}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[R]{\sffamily\small\thepage}\renewcommand{\headrulewidth}{0pt}}
+\InputIfFileExists{pictures/reference_values.tex}{}{}
+\providecommand{\ManualVersion}{0.4.3}
+\InputIfFileExists{pictures/revision.tex}{}{}
+\providecommand{\ManualRevision}{source snapshot}
+\raggedbottom

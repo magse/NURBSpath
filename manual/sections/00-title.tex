@@ -1,0 +1,32 @@
+\begin{titlepage}
+\thispagestyle{empty}
+\vspace*{12mm}
+{\sffamily\bfseries\color{manualteal}\large LIBRARY MANUAL / FIRST EDITION\par}
+\vspace{9mm}
+{\sffamily\bfseries\color{manualink}\fontsize{43}{47}\selectfont nurbspath\par}
+\vspace{4mm}
+{\sffamily\color{manualblue}\LARGE An illustrated C++20 reference\par}
+\vspace{7mm}
+{\large Entities, construction, NURBS paths,\par numerical queries, and output\par}
+\vspace{12mm}
+\begin{center}
+\begin{tikzpicture}[x=2.2cm,y=2.2cm]
+  \fill[manuallight,rounded corners=4mm] (-.2,-.45) rectangle (4.45,1.65);
+  \draw[control] (0,0)--(1,1.3)--(2,-.1)--(3,1.2)--(4,.5);
+  \draw[curve] plot[smooth] coordinates {(0,0)(.5,.55)(1,.65)(1.5,.43)(2,.53)(2.5,.82)(3,.83)(3.5,.67)(4,.5)};
+  \foreach \p in {(0,0),(1,1.3),(2,-.1),(3,1.2),(4,.5)} \node[point] at \p {};
+  \draw[manualorange,very thick] (2.8,.45) circle (.5);
+  \draw[axis] (0,-.25)--(.7,-.25) node[right] {$x$};
+  \draw[axis] (0,-.25)--(0,.45) node[left] {$y$};
+  \node[manualmuted,font=\scriptsize] at (2.0,-.30) {Schematic control polygon and curve};
+\end{tikzpicture}
+\end{center}
+\vfill
+{\sffamily\bfseries Library version \ManualVersion\par}
+{\color{manualmuted}Source revision \texttt{\ManualRevision}\par}
+{\color{manualmuted}27 October 2026\par}
+\vspace{5mm}
+{\small Standalone experimental manual. All figures are TikZ/PGFPlots drawings;
+the sampled reference curves and query results are calculated by nurbspath.
+This document is built independently of the project CMake configuration.\par}
+\end{titlepage}

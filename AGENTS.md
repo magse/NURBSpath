@@ -237,6 +237,9 @@ tagged-data example and all format documentation current.
 - `README.md`: API, coordinate, and numerical behavior
 - `DATA.md`: versioned format for 3D geometry, presentation, and advisory records
 - `INSTALL.md`: build, install, and consumption instructions
+- [`manual/README.md`](manual/README.md): standalone illustrated
+  [PDF manual](manual/nurbspath-manual.pdf), split LaTeX sources, TikZ reference
+  data, and build instructions
 - `.gitignore`: generated build, release, cache, and platform metadata rules
 
 ## Documentation

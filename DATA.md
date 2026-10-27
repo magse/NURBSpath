@@ -14,6 +14,9 @@ header, index, uniqueness constraint, or required row ordering. A file is
 simply zero or more geometry, presentation, or advisory rows. An optional
 untagged application row typically appears first but may appear anywhere.
 
+The [illustrated PDF manual](https://github.com/magse/NURBSpath/blob/main/manual/nurbspath-manual.pdf) includes worked
+examples of tagged geometry, presentation settings, and advisory output.
+
 ## Version 1 row grammar
 
 Geometry and presentation version 1 rows have this prefix and one type-specific

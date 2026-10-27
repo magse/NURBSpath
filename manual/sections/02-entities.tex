@@ -1,0 +1,546 @@
+\chapter{Entities and elementary geometry}
+\label{chap:entities}
+
+An entity carries both a geometric meaning and a dimension. A \api{point2}
+is a position in the native 2D world; a \api{vector2} is a displacement in
+that world. Their 3D counterparts have the same distinction. All geometry
+templates take a floating-point scalar type, written \api{REAL}; the examples
+in this chapter use \api{double}.
+
+\begin{table}[htbp]
+\centering
+\caption{Entity families and their native parameters.}
+\begin{tabularx}{\linewidth}{@{}lXl@{}}
+\toprule
+Entity & Meaning & Parameters \\
+\midrule
+\api{point2}, \api{point3} & Cartesian position & coordinates \\
+\api{vector2}, \api{vector3} & Offset or direction & components \\
+\api{ray2}, \api{ray3} & Forward half-line & $s\geq0$ \\
+\api{circle2} & Circle in the native 2D world & angle $u$ \\
+\api{sphere3} & Spherical surface in 3D & longitude $u$, latitude $v$ \\
+\api{plane3} & Infinite oriented plane in 3D & local distances $u,v$ \\
+\api{nurbs_spline2}, \api{nurbs_spline3} & Rational B-spline curve & native $s$ \\
+\api{nurbs_arr_spline2}, \api{nurbs_arr_spline3} & Array-backed curve alternative & native $s$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+There is no \api{plane2}. A 2D point is not implicitly a 3D point with a
+zero Z coordinate. The explicit bridge \api{project(plane, entity2)} embeds a
+2D entity using a specified \api{plane3}; its geometric meaning is described
+in Chapter~\ref{chap:algorithms}. Spline definitions and their analytic
+derivatives are developed in Chapter~\ref{chap:splines}.
+
+\section{Points: positions and translations}
+
+\api{point2<REAL>} and \api{point3<REAL>} are aggregates with public,
+zero-initialized coordinates \api{x}, \api{y}, and, for 3D, \api{z}.
+Aggregate initialization and \api{origin()} provide their creation calls:
+
+\begin{lstlisting}[language=C++]
+using namespace nurbspath;
+point2<double> a{1.0, 2.0};
+point3<double> b{1.0, 2.0, 3.0};
+const auto o2 = point2<double>::origin();
+const auto o3 = point3<double>::origin();
+\end{lstlisting}
+
+\api{operator[]} gives mutable or constant coordinate access in X/Y/Z
+order, starting at index zero; an invalid index throws
+\api{std::out_of_range}. \api{operator==} compares coordinates exactly.
+Use \api{approximately_equal(other, tolerance)} when a Euclidean position
+tolerance is intended.
+
+Subtracting two points gives the vector from the right operand to the left.
+Adding or subtracting a vector translates a point; \api{+=} and \api{-=}
+are the in-place forms. Both \api{point + vector} and
+\api{vector + point} are available. Two points cannot be added, and a point
+cannot be scaled as though it were a displacement.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=1.08]
+\draw[axis] (-.3,0)--(5,0) node[right]{$x$};
+\draw[axis] (0,-.3)--(0,3.5) node[above]{$y$};
+\coordinate (O) at (0,0); \coordinate (A) at (1,1);
+\coordinate (B) at (4,2.7); \coordinate (M) at (2.5,1.85);
+\draw[guide] (A)--(1,0); \draw[guide] (B)--(4,0);
+\draw[vector] (O)--(A) node[midway,left]{$A-O$};
+\draw[vector,manualteal] (A)--(B) node[midway,above,sloped]{$B-A$};
+\node[point,label=above left:$A$] at (A) {};
+\node[point,label=above right:$B$] at (B) {};
+\node[point,fill=manualorange,label=below right:{$\operatorname{lerp}(A,B,\tfrac12)$}] at (M) {};
+\node[below left] at (O) {$O$};
+\end{tikzpicture}
+\caption{Positions are anchored in a Cartesian world. The difference $B-A$
+is a displacement; adding that displacement to $A$ recovers $B$.}
+\label{fig:point-displacement}
+\end{figure}
+
+\begin{lstlisting}[language=C++]
+const point3<double> first{1.0, 1.0, 0.0};
+const point3<double> second{4.0, 3.0, 0.0};
+const vector3<double> offset = second - first;
+const point3<double> translated = first + offset;
+const point3<double> middle = lerp(first, second, 0.5);
+const double separation = distance(first, second);
+\end{lstlisting}
+
+\api{lerp(first, second, fraction)} evaluates
+$P_0+t(P_1-P_0)$ in either world. It permits extrapolation: fractions below
+zero or above one continue along the same line. \api{distance} returns
+Euclidean distance and \api{distance_squared} returns its square without a
+square root. These free functions take two points from the same world.
+
+The point members \api{magnitude()} and \api{manhattan_distance()} measure
+distance from the Cartesian origin, respectively
+$\sqrt{x^2+y^2+z^2}$ and $|x|+|y|+|z|$, with the Z term omitted in 2D.
+They do not measure distance from a user-selected local origin.
+
+\begin{manualnote}[Explicit component copying]
+A same-world vector may be assigned to a point. For example,
+\api{b = vector3<double>{1, 2, 3}} replaces the point coordinates with those
+components. This is a coordinate-copy operation, not a translation. Point
+and vector types nevertheless remain distinct, and no dimension conversion
+is introduced by this assignment.
+\end{manualnote}
+
+\section{Vectors: directions and their components}
+
+Vectors have public, zero-initialized components and the same checked indexed
+access and exact equality as points. Their constructors are:
+
+\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C++]
+vector2<double> zero2;
+vector2<double> v2{3.0, 4.0};
+vector3<double> zero3;
+vector3<double> v3{1.0, 2.0, 3.0};
+vector3<double> from_position{point3<double>{1.0, 2.0, 3.0}};
+\end{lstlisting}
+\end{minipage}
+
+The constructors from entities are explicit. A \api{vector2} constructed
+from a \api{point2}, \api{circle2}, or \api{ray2} copies, respectively,
+the point coordinates, circle center, or ray origin. A \api{vector3}
+constructed from a \api{point3}, \api{sphere3}, \api{plane3}, or
+\api{ray3} copies the point, center, plane origin, or ray origin. In
+particular, constructing a vector from a ray does not extract its direction;
+use \api{direction()} for that purpose.
+
+\subsection{Algebra and length}
+
+For both vector types, unary plus and minus, vector addition and subtraction,
+scalar multiplication in either order, and scalar division are available.
+Their compound forms are \api{+=}, \api{-=}, \api{*=}, and \api{/=}.
+Division by an exactly zero scalar throws \api{std::domain_error}.
+
+\begin{table}[htbp]
+\centering
+\caption{Vector operations common to 2D and 3D. Here $a$ and $b$ have the
+same vector type and $t$ is a scalar.}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Call & Result or use \\
+\midrule
+\api{a.dot(b)}, \api{dot(a, b)} & Scalar inner product $a\cdot b$. \\
+\api{a.cross(b)}, \api{cross(a, b)} & Signed scalar area in 2D; right-handed perpendicular vector in 3D. \\
+\api{a.length_squared()} & $a\cdot a$. \\
+\api{a.length()} & Euclidean length, evaluated with \api{std::hypot}. \\
+\api{a.is_near_zero(tolerance)} & Whether squared length is at most the squared tolerance. \\
+\api{a.normalized(tolerance)} & New unit vector; throws for a length at or below the tolerance. \\
+\api{a.normalize()} & Normalize in place using the default tolerance; unchanged if it fails. \\
+\api{a.component_product(b)} & Product of corresponding components. \\
+\api{a.min_component()}, \api{a.max_component()} & Smallest or largest signed component. \\
+\api{a.approximately_equal(b, tolerance)} & Euclidean component-space difference within tolerance. \\
+\api{lerp(a, b, t)} & $(1-t)a+tb$; extrapolation is permitted. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\api{zero()}, \api{unit_x()}, and \api{unit_y()} are static vector
+constructors; \api{vector3} also has \api{unit_z()}.
+\api{default_tolerance()} is $64$ times the machine epsilon of
+\api{REAL}. This absolute tolerance is a convenient arithmetic default;
+applications should supply a meaningful length tolerance when their scale
+requires it.
+
+In 2D, $a\times b=a_xb_y-a_yb_x$ is positive when $b$ lies
+counterclockwise from $a$ through an angle below $\pi$.
+\api{perpendicular_left()} returns $(-a_y,a_x)$ and
+\api{perpendicular_right()} returns $(a_y,-a_x)$; neither normalizes.
+In 3D, the cross product follows the right-hand rule.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=.95]
+\begin{scope}
+\draw[axis] (-.3,0)--(3.5,0) node[right]{$x$};
+\draw[axis] (0,-.3)--(0,3.2) node[above]{$y$};
+\draw[vector] (0,0)--(2.5,.8) node[right]{$a$};
+\draw[vector,manualteal] (0,0)--(-.8,2.5) node[above]{$a_\mathrm{left}$};
+\draw[manualorange,-{Latex}] (.9,.288) arc[start angle=18,end angle=108,radius=.945];
+\node at (1.7,2.6) {$a\times a_\mathrm{left}>0$};
+\end{scope}
+\begin{scope}[shift={(6,0)},x={(.9cm,-.3cm)},y={(.65cm,.4cm)},z={(0cm,1cm)}]
+\draw[axis] (0,0,0)--(2.6,0,0) node[right]{$x$};
+\draw[axis] (0,0,0)--(0,2.6,0) node[right]{$y$};
+\draw[axis] (0,0,0)--(0,0,2.9) node[above]{$z$};
+\draw[vector] (0,0,0)--(2,0,0) node[below]{$a$};
+\draw[vector,manualteal] (0,0,0)--(0,2,0) node[above left]{$b$};
+\draw[vector,manualorange] (0,0,0)--(0,0,2.2) node[right]{$a\times b$};
+\end{scope}
+\end{tikzpicture}
+\caption{The 2D perpendicular operation and the 3D cross product have
+different return types. Both retain orientation information.}
+\end{figure}
+
+\subsection{Projection, rejection, reflection, and angles}
+
+For a nonzero axis $b$, the member \api{a.projected_onto(b, tolerance)}
+computes
+\[
+ a_{\parallel}=\frac{a\cdot b}{b\cdot b}\,b,
+ \qquad
+ a_{\perp}=a-a_{\parallel}.
+\]
+\api{a.rejected_from(b, tolerance)} returns $a_{\perp}$.
+The axis need not be normalized. Both calls reject an axis whose squared
+length is at or below the squared tolerance.
+
+\api{a.reflected(normal, tolerance)} computes
+$a-2(a\cdot\widehat n)\widehat n$. Its argument is the normal to the
+reflecting line in 2D or plane in 3D. Passing the direction of the reflecting
+line would describe a different reflection. A near-zero normal throws
+\api{std::domain_error}.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=1.1]
+\draw[axis] (-.4,0)--(5.2,0) node[right]{axis $b$};
+\draw[guide] (3,2)--(3,0);
+\draw[vector] (0,0)--(3,2) node[above right]{$a$};
+\draw[vector,manualteal] (0,0)--(3,0) node[midway,below]{$a_{\parallel}$};
+\draw[vector,manualorange] (3,0)--(3,2) node[midway,right]{$a_{\perp}$};
+\draw[vector,manualred] (0,0)--(3,-2) node[below right]{$a_\mathrm{reflected}$};
+\draw[vector,manualmuted] (-.3,0)--(-.3,1.35) node[above]{$n$};
+\draw[manualmuted] (2.8,0)--(2.8,.2)--(3,.2);
+\end{tikzpicture}
+\caption{Projection and rejection decompose a vector. Reflection across
+the horizontal line reverses the normal component and retains the parallel
+component.}
+\label{fig:vector-components}
+\end{figure}
+
+\api{angle_to(other, tolerance)} returns an unsigned angle in radians
+between zero and $\pi$, using a clamped cosine. Its degeneracy test compares
+the product of the lengths to the square of the supplied tolerance.
+\api{vector2::signed_angle_to(other, tolerance)} instead returns the
+counterclockwise signed angle in $[-\pi,\pi]$, rejecting either individual
+direction when it is too small. There is no signed 3D angle without an
+additional orientation convention.
+
+\begin{lstlisting}[language=C++]
+const vector2<double> velocity{3.0, 2.0};
+const auto along = velocity.projected_onto(vector2<double>{1.0, 0.0});
+const auto across = velocity.rejected_from(vector2<double>{1.0, 0.0});
+const auto bounced = velocity.reflected(vector2<double>{0.0, 1.0});
+const double turn = vector2<double>::unit_x().signed_angle_to(velocity);
+\end{lstlisting}
+
+\section{Rotation about a 3D origin axis}
+
+The free function \api{rotate(axis, angle, point)} rotates a
+\api{point3<REAL>} about a direction through the Cartesian world origin.
+The axis need not be normalized and the signed angle is in radians, following
+the right-hand rule. An exactly zero axis throws \api{std::domain_error}.
+Finite components, point coordinates, and angle are required for a finite
+result. The function uses Rodrigues' formula:
+\[
+ R(p)=\cos\theta\,p+\sin\theta\,(\widehat a\times p)
+ +(1-\cos\theta)(\widehat a\cdot p)\widehat a.
+\]
+
+For rotation about an axis through a different point $C$, explicitly shift
+the position to the origin, rotate it, and shift it back:
+
+\begin{lstlisting}[language=C++]
+const point3<double> center{2.0, 1.0, 0.0};
+const point3<double> position{3.0, 1.0, 0.0};
+const vector3<double> offset = position - center;
+const point3<double> relative{offset.x, offset.y, offset.z};
+const auto rotated_relative = rotate(
+    vector3<double>::unit_z(), std::numbers::pi / 2.0, relative);
+const auto rotated = center + vector3<double>{rotated_relative};
+\end{lstlisting}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=1.05]
+\draw[axis] (-.4,0)--(4.5,0) node[right]{$x$};
+\draw[axis] (0,-.4)--(0,3.7) node[above]{$y$};
+\draw[guide] (0,0) circle[radius=2.6];
+\draw[vector] (0,0)--(2.6,0) node[below]{$P$};
+\draw[vector,manualteal] (0,0)--(1.3,2.252) node[above right]{$R(P)$};
+\draw[manualorange,thick,-{Latex}] (1,0) arc[start angle=0,end angle=60,radius=1];
+\node[manualorange] at (1.25,.68) {$\theta$};
+\node[point,label=below left:$O$] at (0,0) {};
+\node[anchor=west,align=left] at (3.2,2.5) {axis $+z$\\out of the page};
+\end{tikzpicture}
+\caption{Positive rotation about $+z$ appears counterclockwise when viewed
+from the positive-Z side. The public rotation call is for a 3D point.}
+\end{figure}
+
+\section{Rays and their native parameter}
+
+Construct a ray with an origin, direction, and optional minimum direction
+length. The \api{ray2} and \api{ray3} APIs have the same forms:
+
+\begin{lstlisting}[language=C++]
+ray2<double> ray_2d(point2<double>{1.0, 1.0},
+                    vector2<double>{2.0, 0.5});
+ray3<double> ray_3d(point3<double>{1.0, 1.0, 0.0},
+                    vector3<double>{2.0, 0.5, 0.0});
+const auto at_two = ray_3d.point_at(2.0);
+const auto same_point = ray_3d.evaluate(2.0);
+const auto unit_tangent = ray_3d.tangent();
+\end{lstlisting}
+
+The native parameterization is
+\[
+ r(s)=O+sD,\qquad s\geq0.
+\]
+Construction preserves $D$ exactly rather than normalizing it. A parameter
+change $\Delta s$ therefore moves through a world distance
+$|\Delta s|\,\lVert D\rVert$; $s$ is itself a distance only for a unit
+direction. \api{point_at} and its alias \api{evaluate} evaluate the formula
+even for a negative argument, but ray intersection and distance queries use
+the forward half-line. \api{tangent()} returns the normalized positive
+direction without changing the stored ray.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=1.05]
+\draw[guide] (-1.3,-.325)--(0,0);
+\draw[manualred,very thick,-{Latex}] (0,0)--(8,2);
+\draw[vector] (0,0)--(2,.5) node[midway,above,sloped]{$D$};
+\foreach \station/\rayx/\rayy in {0/0/0,1/2/.5,2/4/1,3/6/1.5}{
+ \node[point,label=below:{$s=\station$}] at (\rayx,\rayy) {};
+}
+\node[anchor=east] at (-.3,.55) {$O$};
+\end{tikzpicture}
+\caption{Uniform increments in $s$ follow the unnormalized direction. The
+dashed continuation behind the origin is outside the ray domain.}
+\end{figure}
+
+\api{origin()} and \api{direction()} return constant references;
+\api{get_origin()} and \api{get_direction()} are equivalent getters.
+Use \api{set_origin}, \api{set_direction}, or
+\api{set_origin_and_direction} to edit the definition. The direction and
+bulk setters validate before committing, leaving the ray unchanged when the
+new direction is rejected. The constructor and these setters throw
+\api{std::invalid_argument} when the direction is within the supplied
+tolerance of zero. Origin setters also accept a same-world vector and copy
+its components as coordinates.
+
+\section{Circle and sphere surfaces}
+
+\api{circle2(center, radius)} and \api{sphere3(center, radius)} require a
+finite, strictly positive radius. Both expose \api{center()} and
+\api{radius()}, with equivalent \api{get_center()} and \api{get_radius()}
+forms. A circle remains a native 2D entity; a sphere is a 3D surface.
+
+\subsection{A circle's angular coordinate}
+
+For center $C$ and radius $R$, \api{circle2::point_at(u)} evaluates
+\[
+ C+R(\cos u,\sin u).
+\]
+The angle is in radians and increases counterclockwise from positive X.
+\api{parameter_of(point, tolerance)} obtains $u\in[0,2\pi)$ by radial
+projection, so the input need not lie on the circle. It throws
+\api{std::domain_error} within the supplied center-distance tolerance and
+\api{std::invalid_argument} for a negative tolerance.
+\api{normal_at(point)} returns the normalized radial vector and rejects
+the exactly central point.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=1.05]
+\draw[axis] (-.5,0)--(4.6,0) node[right]{$x$};
+\draw[axis] (0,-2.3)--(0,2.7) node[above]{$y$};
+\coordinate (C) at (1.2,0); \coordinate (P) at (2.2,1.732);
+\draw[curve] (C) circle[radius=2];
+\draw[vector,manualteal] (C)--(P) node[midway,left]{$R$};
+\draw[vector,manualorange] (P)--(2.7,2.598) node[right]{$n$};
+\draw[guide] (C)--(3.4,0);
+\draw[manualorange,-{Latex}] (2,0) arc[start angle=0,end angle=60,radius=.8];
+\node at (2.12,.5) {$u$};
+\node[point,label=below:$C$] at (C) {};
+\node[point,label=left:$P(u)$] at (P) {};
+\end{tikzpicture}
+\caption{A circle's parameter is an angle, while its outward normal is a
+unit radial vector.}
+\end{figure}
+
+\begin{lstlisting}[language=C++]
+circle2<double> boundary(point2<double>{1.0, 0.0}, 2.0);
+const auto p = boundary.point_at(std::numbers::pi / 3.0);
+const double u = boundary.parameter_of(p);
+const auto outward = boundary.normal_at(p);
+\end{lstlisting}
+
+\subsection{Longitude and latitude on a sphere}
+
+\api{sphere3::point_at(u, v)} evaluates
+\[
+ C+R(\cos v\cos u,\ \cos v\sin u,\ \sin v).
+\]
+The reported longitude lies in $[0,2\pi)$ and latitude in
+$[-\pi/2,\pi/2]$. Longitude is not geometrically unique at the poles.
+\api{parameters_of(point, tolerance)} obtains the pair by radial
+projection, with the same center rejection and negative-tolerance exceptions
+as the circle. \api{normal_at(point)} is the outward unit radial direction
+and throws at the center.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=1.1]
+\draw[surface] (0,0) circle[radius=2.2];
+\draw[guide] (-2.2,0) arc[start angle=180,end angle=0,x radius=2.2,y radius=.62];
+\draw[manualteal] (-2.2,0) arc[start angle=180,end angle=360,x radius=2.2,y radius=.62];
+\draw[axis] (0,-2.5)--(0,2.7) node[above]{$z$};
+\draw[axis] (0,0)--(2.9,-.72) node[right]{$x$};
+\draw[axis] (0,0)--(2.55,.72) node[right]{$y$};
+\coordinate (P) at (1.36,1.50); \coordinate (Q) at (1.36,-.20);
+\draw[vector] (0,0)--(P) node[midway,above left]{$R$};
+\draw[guide] (0,0)--(Q)--(P);
+\draw[manualorange,-{Latex}] (.7,-.10) arc[start angle=-8,end angle=48,radius=.72];
+\node[manualorange] at (.88,.43) {$v$};
+\draw[manualorange,-{Latex}] (.9,-.225) arc[start angle=-14,end angle=-5,radius=.93];
+\node[manualorange] at (1.1,-.42) {$u$};
+\node[point,label=above right:{$P(u,v)$}] at (P) {};
+\node[point,label=below left:$C$] at (0,0) {};
+\end{tikzpicture}
+\caption{Sphere coordinates use longitude around the Z axis and latitude
+above the XY plane. This is a schematic 3D view.}
+\end{figure}
+
+\begin{lstlisting}[language=C++]
+sphere3<double> ball(point3<double>{0.0, 0.0, 0.0}, 2.0);
+const auto surface_point = ball.point_at(
+    std::numbers::pi / 4.0, std::numbers::pi / 6.0);
+const auto [longitude, latitude] = ball.parameters_of(surface_point);
+const auto normal = ball.normal_at(surface_point);
+\end{lstlisting}
+
+For either type, \api{set_center} preserves the radius,
+\api{set_radius} validates the new radius, and
+\api{set_center_and_radius} validates before updating either member. Failed
+radius validation leaves the object unchanged. Center setters and the bulk
+setter accept a same-world vector as a component source; assignment from
+such a vector also replaces the center while preserving the radius.
+Center-coordinate copying does not itself validate finiteness. Supply finite
+geometric coordinates when a later operation requires a finite result.
+
+\section{Planes: an orthonormal local frame}
+
+A \api{plane3} stores a world-space parameter origin $O$, a unit normal
+$\widehat n$, and orthonormal directions $\widehat u,\widehat v$ with
+$\widehat u\times\widehat v=\widehat n$. Its creation forms are:
+
+\begin{lstlisting}[language=C++]
+const auto z = vector3<double>::unit_z();
+plane3<double> hessian(z, 2.0);
+plane3<double> positioned(point3<double>{0.0, 0.0, 2.0}, z);
+plane3<double> oriented(point3<double>{0.0, 0.0, 2.0}, z,
+                         vector3<double>::unit_x());
+\end{lstlisting}
+
+The Hessian form \api{plane3(normal, signed_distance, tolerance)} first
+normalizes the supplied normal. Its equation is
+$\widehat n\cdot x=d$, and its parameter origin is $d\widehat n$.
+The distance is signed in world units; it is not scaled by the magnitude of
+the original normal. A non-finite distance throws
+\api{std::invalid_argument}.
+
+The origin-and-normal form places $(u,v)=(0,0)$ at the given world point and
+chooses a stable in-plane frame. The third form adds a preferred
+\api{u_hint}: the constructor rejects its normal component and normalizes
+what remains. The normal and accepted in-plane hint must exceed the supplied
+tolerance, otherwise \api{std::domain_error} is thrown. Both forms retain
+the supplied parameter origin rather than moving it to the Hessian closest
+point.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x={(1.1cm,-.30cm)},y={(.64cm,.48cm)},z={(0cm,1cm)}]
+\fill[surface] (-.8,-.8,0)--(3.5,-.8,0)--(3.5,2.8,0)--(-.8,2.8,0)--cycle;
+\coordinate (O) at (0,0,0); \coordinate (P) at (2.5,1.6,0);
+\draw[vector] (O)--(1.6,0,0) node[below]{$\widehat u$};
+\draw[vector,manualteal] (O)--(0,1.6,0) node[left]{$\widehat v$};
+\draw[vector,manualorange] (O)--(0,0,2.2) node[above]{$\widehat n$};
+\draw[guide] (2.5,0,0)--(P)--(0,1.6,0);
+\draw[guide] (P)--(2.5,1.6,2);
+\node[point,label=below left:$O$] at (O) {};
+\node[point,label=below right:{$P(u,v)$}] at (P) {};
+\node[point,label=above:$Q$] at (2.5,1.6,2) {};
+\draw[manualorange,<->] (3,1.6,0)--(3,1.6,2) node[midway,right]{$h$};
+\end{tikzpicture}
+\caption{The orthonormal frame gives world-distance plane coordinates.
+Orthogonal projection removes the signed height $h$ along the normal.}
+\label{fig:plane-frame}
+\end{figure}
+
+\api{point_at(u, v)} evaluates $O+u\widehat u+v\widehat v$.
+For any world point $Q$, \api{signed_distance_to(Q)} returns
+$h=(Q-O)\cdot\widehat n$, \api{project(Q)} returns
+$Q-h\widehat n$, and \api{parameters_of(Q)} returns
+$((Q-O)\cdot\widehat u,(Q-O)\cdot\widehat v)$. Thus coordinates may be
+recovered from an off-plane point without first calling \api{project}.
+The member \api{project(point3)} is an orthogonal point projection within
+the 3D world. The free \api{project(plane3, entity2)} is the separate,
+explicit embedding operation.
+
+\begin{lstlisting}[language=C++]
+const point3<double> query{1.0, 3.0, 5.0};
+const double height = oriented.signed_distance_to(query);
+const auto foot = oriented.project(query);
+const auto [u, v] = oriented.parameters_of(query);
+const auto reconstructed = oriented.point_at(u, v);
+\end{lstlisting}
+
+\api{origin()}, \api{normal()}, \api{u_direction()}, and
+\api{v_direction()} are constant-reference getters. Their
+\api{get_...} forms are equivalent. Two further equivalent getters report
+$\widehat n\cdot O$:
+\begin{itemize}[leftmargin=*]
+\item \api{signed_distance_from_origin()};
+\item \api{get_signed_distance_from_origin()}.
+\end{itemize}
+
+\api{set_origin} moves the parameter origin and retains the frame.
+\api{set_normal} retains the origin and generates a new stable frame;
+\api{set_u_direction} retains the origin and normal and rebuilds the two
+in-plane directions from a hint. \api{set_definition} has Hessian,
+origin-and-normal, and origin-normal-hint forms matching construction. These
+frame-changing setters build a complete candidate before committing it, so
+a rejected normal or hint leaves the original plane unchanged. Origin-based
+setters also accept a \api{vector3} whose components become coordinates.
+The normal and in-plane basis directions remain read-only through getters.
+
+\section{Reading the contracts consistently}
+
+Coordinate access and simple arithmetic are deliberately lightweight. They
+do not impose a universal finite-value check on every assignment. In
+contrast, radius validation, direction degeneracy checks, frame construction,
+NURBS definition validation, and record encoding have specific documented
+checks. A zero vector is a valid stored vector but cannot define a unit
+direction or plane normal. A point at a sphere or circle center is a valid
+position but has no radial surface coordinate.
+
+Point and vector CSV, whitespace, binary, and selected 3D tagged I/O members
+are described with the complete output protocols later in this manual.
+Those methods do not change the geometric distinction between positions and
+displacements.

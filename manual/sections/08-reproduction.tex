@@ -1,0 +1,92 @@
+\chapter{Rebuilding and extending this manual}\label{chap:reproduction}
+\section{A standalone local build}
+The manual is intentionally isolated. Its source, generated reference data,
+build helper, and final PDF are all under \api{manual/}. It adds no CMake
+target and requires no change to the project's other documentation.
+
+From the repository root, run:
+\begin{lstlisting}[style=plain]
+sh manual/build.sh
+\end{lstlisting}
+The script uses an already installed C++20 compiler and \api{pdflatex}.
+It neither installs packages nor downloads resources. It compiles
+\api{pictures/generate_reference.cpp} against \api{../include}, checks and
+regenerates the geometry data, runs LaTeX three times to resolve the contents
+and references, then writes \api{manual/nurbspath-manual.pdf}. Temporary
+compiler and TeX products remain under \api{manual/build/}.
+
+The local TeX installation must already provide TikZ, PGFPlots, Latin Modern,
+AMS mathematics, geometry, listings, hyperref, booktabs/tabularx/longtable,
+enumitem, needspace, fancyhdr, microtype, bookmark, and tcolorbox. This edition
+was built with locally available TeX Live 2026. TikZ pictures are compiled
+inside the document, without shell escape or externalisation.
+
+\section{Source layout}
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+\toprule
+Location & Purpose\\
+\midrule
+\api{main.tex} & Master document and optional author-file hooks.\\
+\api{preamble.tex} & Typography, colours, TikZ styles, code listings, and page layout.\\
+\api{sections/00-title.tex} & Cover and snapshot identification.\\
+\api{sections/01-foundations.tex} & Worlds, units, parameter conventions, and first program.\\
+\api{sections/02-entities.tex} & Positions, vectors, rays, round surfaces, planes, embedding.\\
+\api{sections/03-creators.tex} & Value construction and shared-ownership factories.\\
+\api{sections/04-splines.tex} & Ordinary/array NURBS definitions and curve algorithms.\\
+\api{sections/05-algorithms.tex} & Numerical utilities, intersections, and distances.\\
+\api{sections/06-graphics-io.tex} & SVG rendering, persistence, and advisory output.\\
+\api{sections/07-reference.tex} & API catalogue introduction.\\
+\api{sections/reference_api.tex} & Generated signature/brief catalogue.\\
+\api{pictures/} & C++ reference generator, sampled data, and display-value macros.\\
+\api{tools/generate_api.py} & Optional local Doxygen-to-LaTeX catalogue refresh.\\
+\bottomrule
+\end{tabularx}
+
+\section{Your introductory and closing material}
+The master already contains conditional hooks for two files:
+\begin{lstlisting}[style=plain]
+\InputIfFileExists{intro.tex}{}{}
+...
+\InputIfFileExists{external.tex}{}{}
+\end{lstlisting}
+Place \api{intro.tex} in the manual directory to insert your introductory
+words after the cover and before the contents. Place \api{external.tex} there
+to insert your closing material after the appendices. Neither file is created
+as a placeholder, so there is nothing to overwrite when you import your own
+files. The document builds while they are absent.
+
+These are included fragments, not separate documents: omit
+\verb|\documentclass|, \verb|\begin{document}|, and
+\verb|\end{document}|. You can use the same TikZ styles, \verb|\api|,
+\api{manualnote}, and \api{lstlisting} formatting as the rest of the book.
+Use \verb|\chapter*{Introduction}| or a similar unnumbered heading if wanted;
+add it to the contents explicitly with \verb|\addcontentsline| if appropriate.
+
+\section{Refreshing the API snapshot}
+A normal build consumes the retained LaTeX catalogue. To refresh it from
+the current public headers using an already installed Doxygen and Python:
+\begin{lstlisting}[style=plain]
+cd manual
+python3 tools/generate_api.py
+sh build.sh
+\end{lstlisting}
+The extractor writes a machine-readable coverage inventory to
+\api{pictures/api_inventory.json}; it excludes private members and detail
+helpers and counts public callable overloads. No network call or package
+installation is part of this process. The installed Doxygen 1.18 comment
+lexer can occasionally terminate by signal in this environment; the refresh
+helper retries signal failures a bounded number of times and never suppresses
+an ordinary documentation error.
+
+\section{Checking numerical and visual changes}
+The C++ reference generator checks interpolation at the supplied stations,
+rational quarter-circle radii, crossing and tangent contact counts, closest
+point consistency, array conversion, plane embedding, root discovery, and a
+linear-system solution before writing coordinates. Display rounding occurs
+after those checks. It is a reproducible worked-example validation, not a
+replacement for the library's numbered test suite.
+
+After editing the book, inspect its build log for LaTeX errors, unresolved
+references, and overfull boxes. Render pages with a local PDF renderer to
+check diagrams, tables, code, contents, headers, and page breaks. The supplied
+PDF is the rendered result of the checked-in section files and reference data.

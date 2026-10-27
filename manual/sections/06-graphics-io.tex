@@ -1,0 +1,325 @@
+\chapter{Rendering, persistence, and diagnostics}\label{chap:output}
+\section{A flat native 2D canvas}
+\api{svg_view2<REAL>} maps the independent 2D world directly onto a rectangular
+SVG image. Supply its world centre, minimum visible world width and height,
+and optional image dimensions. The mapping uses one uniform scale; a viewport
+with a different aspect ratio is letterboxed rather than stretching circles
+into ellipses. Positive world $y$ points up while SVG image $y$ points down.
+
+\begin{lstlisting}
+namespace np = nurbspath;
+using REAL = double;
+const np::svg_view2<REAL> view({0.0, 0.0}, 6.0, 4.0, 900, 600);
+np::svg_graphics_options2<REAL> style;
+style.line_width = 1.5;
+style.spline_segment_count = 160;
+np::svg_canvas2<REAL> canvas(view, style);
+canvas.add(np::point2<REAL>{-1.0, 1.0});
+canvas.add(np::ray2<REAL>({-2.0, -1.0}, {1.0, 0.25}));
+canvas.add(np::circle2<REAL>({0.5, 0.0}, 1.0));
+const std::string svg = canvas.svg();
+// canvas.write(output) streams the same self-contained document.
+\end{lstlisting}
+The canvas accepts native 2D points, rays, circles, and ordinary splines.
+\api{add(spline)} draws its sampled polyline, control polygon, controls, and
+evaluated endpoint dots. All flat-canvas strokes are solid, including
+construction geometry. Unit red/green $XY$ references remain visible at the
+2D origin. Vectors cannot be drawn alone because they do not supply a position.
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}[x=1cm,y=1cm]
+ \draw[surface] (-3,-1.7) rectangle (3,1.7);
+ \draw[axis] (-2.7,-1.3)--(2.7,-1.3) node[below] {world $x$};
+ \draw[axis] (-2.7,-1.3)--(-2.7,1.4) node[above] {world $y$};
+ \draw[curve] (.2,.15) circle (.8);
+ \node[point] at (.2,.15) {};
+ \draw[manualred,thick] (-2.8,-.65)--(2.7,.65);
+ \node[manualmuted] at (0,-2.05) {One scale for both world coordinates};
+ \draw[manualorange,thick] (4.3,-1.7) rectangle (7.0,1.7);
+ \draw[axis] (4.5,1.4)--(6.7,1.4) node[right] {SVG $x$};
+ \draw[axis] (4.5,1.4)--(4.5,-1.15) node[below] {SVG $y$};
+ \draw[curve] (5.65,0) circle (.7);
+ \node[manualmuted,align=center] at (5.65,-2.05) {Image coordinates\\reverse $y$};
+ \draw[-{Stealth},manualmuted,thick] (3.2,0)--(4.0,0);
+\end{tikzpicture}
+\caption{A flat drawing needs no plane embedding. Uniform scale preserves
+shape; the image coordinate direction is a display convention.}
+\label{fig:flat-canvas}
+\end{figure}
+
+\section{World-space cameras in 3D}
+\api{svg_view3<REAL>::orthographic} takes a world-space eyepoint and look-at
+point, orthographic world width/height, and image dimensions.
+\api{svg_view3<REAL>::perspective} instead takes the vertical field angle in
+radians and a positive near distance. A camera must have a nonzero viewing
+direction. Image dimensions and orthographic extents must be positive; a
+perspective field angle must be strictly between zero and $\pi$. Camera
+getters expose the selected settings without changing the camera.
+
+\begin{lstlisting}
+const np::point3<REAL> eye{5.0, -7.0, 4.5};
+const np::point3<REAL> target{0.0, 0.0, 0.5};
+const auto ortho = np::svg_view3<REAL>::orthographic(
+    eye, target, 6.0, 4.0, 900, 600);
+const auto perspective = np::svg_view3<REAL>::perspective(
+    eye, target, std::numbers::pi_v<REAL> / 4.0,
+    900, 600, 0.05);
+np::svg_document3<REAL> scene(perspective);
+scene.add(np::sphere3<REAL>({0.0, 0.0, 0.0}, 1.0));
+scene.add(np::plane3<REAL>({0.0, 0.0, -1.0}, {0.0, 0.0, 1.0}));
+scene.add(np::ray3<REAL>({-2.0, 0.0, 0.0}, {2.0, 0.0, 0.0}));
+const std::string scene_svg = scene.svg();
+\end{lstlisting}
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}[x=1cm,y=1cm]
+ \node[manualink,font=\bfseries] at (1.9,2) {Orthographic};
+ \draw[manualteal,thick] (0,-1.2)--(0,1.2);
+ \draw[manualblue,thick] (3,-.8)--(3,.8);
+ \foreach \y in {-.8,0,.8} \draw[-{Stealth},manualmuted] (3,\y)--(0,\y);
+ \node[manualmuted] at (1.5,-1.6) {Equal size at every depth};
+ \node[manualink,font=\bfseries] at (6.9,2) {Perspective};
+ \node[point,label=below:Eye] (e) at (4.5,0) {};
+ \draw[manualteal,thick] (5.5,-.7)--(5.5,.7);
+ \draw[manualblue,thick] (8,-1.2)--(8,1.2);
+ \draw[guide] (e)--(8,-1.2) (e)--(8,1.2);
+ \draw[manualorange,very thick] (5.5,-.343)--(5.5,.343);
+ \node[manualmuted,align=center] at (5.5,-1.25) {near/image\\plane};
+ \node[manualmuted] at (7.1,-1.9) {Apparent size depends on depth};
+\end{tikzpicture}
+\caption{Camera projection is a display operation on the same 3D geometry.
+The perspective diagram is a 2D cross-section of the viewing cone.}
+\label{fig:camera-projection}
+\end{figure}
+
+Perspective world segments are clipped at the near plane before division by
+depth. A segment crossing the plane retains its visible part; an entirely
+hidden segment disappears. Orthographic output uses a uniform screen scale.
+The sphere silhouette is sampled from geometry appropriate to the camera.
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}
+ \fill[manualred!6] (-3,-1.2) rectangle (0,1.5);
+ \fill[manualteal!6] (0,-1.2) rectangle (4.2,1.5);
+ \draw[manualorange,thick] (0,-1.2)--(0,1.5) node[above] {near plane};
+ \draw[manualred,dashed,thick] (-2,-.6)--(0,.2);
+ \draw[curve] (0,.2)--(3,1.4);
+ \node[point] at (0,.2) {};
+ \node[manualmuted] at (-1.7,1.1) {clipped};
+ \node[manualmuted] at (2,-.7) {retained and projected};
+ \draw[axis] (-2.7,-1.6)--(4,-1.6) node[right] {depth};
+\end{tikzpicture}
+\caption{Near-plane clipping prevents an invisible endpoint from producing
+an unbounded perspective line. The clipped endpoint is an intermediate
+rendering point, not a new library entity.}
+\label{fig:near-clip}
+\end{figure}
+
+\section{Diagnostic glyphs and convenience rendering}
+The default 3D scene is deliberately diagnostic rather than photorealistic.
+The configurable \api{line_width} is in SVG viewBox units. The graphics options
+also control spline/sphere segment counts, the plane square size, and other
+documented construction lengths. \api{validate()} rejects invalid settings and
+derived stroke sizes that cannot remain finite.
+
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+\toprule
+Entity & Default diagnostic conventions\\
+\midrule
+Point & Black location dot.\\
+Ray & Pale-red dashed infinite supporting line, solid positive unit-direction
+marker, and origin dot. Native direction magnitude does not change its glyph.\\
+Sphere & Pale-blue silhouette, visible/hidden equator strokes, and centre dot.\\
+Plane & Pale-green square (default side one quarter unit), unit normal,
+half-unit positive $u$/$v$ markers, and parameter-origin dot.\\
+Spline & Piecewise-linear curve, dashed control polygon, control dots, and
+evaluated endpoint dots.\\
+World axes & Persistent coloured $XYZ$ unit axes and labels at half line width.\\
+\bottomrule
+\end{tabularx}
+
+A native 2D entity can be explicitly embedded for rendering with
+\api{scene.add(plane, entity2)}. Its primary strokes are dash-dotted, with
+dotted auxiliary/hidden/control strokes. The 2D circle bridge carries centre
+and radius into a complete sphere. The separate flat canvas performs no such
+embedding and always uses solid strokes.
+
+\api{to_svg(view2, entity2, options2)} constructs a temporary flat canvas.
+\api{to_svg(view3, entity3, options3)} constructs a 3D document.
+\api{to_svg(view3, plane, entity2, options3)} performs explicit embedding. All
+return self-contained XML strings; \api{svg()} and \api{write(output)} expose
+the corresponding accumulated document. These functions do not render free
+vectors or transform an arbitrary coordinate frame. A projected 2D circle
+whose finite world radius overflows the screen radius has its outline omitted;
+a finite centre still receives its dot.
+
+\section{Coordinate streams, CSV/TSV, and binary records}
+\api{point2}, \api{point3}, \api{vector2}, and \api{vector3} support
+\api{operator<<} and \api{operator>>}. Their fields are whitespace-separated
+coordinates in $x,y[,z]$ order. Reads commit only when a complete coordinate
+record has been obtained. Vector/point semantics remain explicit even though
+the scalar layout is similar.
+
+\begin{lstlisting}
+np::point3<REAL> position{1.0, 2.0, 3.0};
+std::ostringstream csv;
+position.csv_write(csv, np::text_format::csv, 4);
+// Display: 1.0000e+00,2.0000e+00,3.0000e+00
+std::istringstream csv_input(csv.str());
+np::point3<REAL> restored;
+restored.csv_read(csv_input, np::text_format::csv);
+std::stringstream binary(std::ios::in | std::ios::out | std::ios::binary);
+position.write(binary);
+np::point3<REAL> binary_copy;
+binary_copy.read(binary);
+\end{lstlisting}
+\api{csv_write(output, format, decimal_places)} uses scientific notation;
+the default precision is six decimal places. Select \api{text_format::csv},
+\api{tsv}, or \api{txt}. Delimited reads expect the chosen separators in the
+coordinate record; this is not a general quoted-field CSV parser. These
+helpers do not append a newline. Invalid format/negative output precision are
+rejected. Stream errors use the normal stream state and exception mask.
+
+Binary \api{write}/\api{read} store two or three native \api{REAL} values,
+without a header or type discriminator. The layout is appropriate for matching
+readers/writers, not portable interchange across byte orders, scalar types, or
+floating-point representations. A failed complete read leaves the original
+entity unchanged.
+
+\section{Tagged records and independent presentation rows}
+Tagged persistence supports four concrete 3D geometry types and three
+presentation types. The scientific numbers in this displayed preview have
+four decimal places; the canonical writers deliberately use full round-trip
+\api{REAL} precision, independent of the destination stream formatting.
+
+\begin{lstlisting}[style=plain]
+42 point3 v1 1.0000e+00 2.0000e+00 3.0000e+00
+42 vector3 v1 0.0000e+00 1.0000e+00 0.0000e+00
+42 sphere3 v1 0.0000e+00 0.0000e+00 0.0000e+00 1.0000e+00
+42 linecolor v1 2.0000e-01 4.0000e-01 8.0000e-01 7.5000e-01
+42 linefont v1 1.5000e+00 4.0000e+00 2.0000e+00
+42 text v1 1.2000e+01 "Path \"A\"\nnext pass"
+\end{lstlisting}
+\api{spline3} is the token for \api{nurbs_spline3}; its payload contains
+degree, closure flag, tolerance, control and knot counts, interleaved control
+$x,y,z,\text{weight}$ groups, then all knots. Array-backed splines convert to
+an ordinary same-world spline before tagged output. There is no tagged 2D
+geometry format or implicit 2D-to-3D persistence conversion.
+
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+\toprule
+Presentation value & Validation and meaning\\
+\midrule
+\api{line_color<REAL>} & \api{red}, \api{green}, \api{blue}, \api{alpha} are
+finite in $[0,1]$. Alpha is opacity; default is opaque black.\\
+\api{line_font<REAL>} & Finite positive width; \api{on}/\api{off} are both
+zero for solid lines, or both finite positive for dashes. Default is
+\api{{1,0,0}}.\\
+\api{text_label<REAL>} & Finite positive size, default 12, and a string.
+Width, dash lengths, and text size use consumer-selected display units.\\
+\bottomrule
+\end{tabularx}
+
+\begin{lstlisting}
+std::stringstream rows;
+position.tag_write(42, rows);
+np::line_color<REAL>{0.2, 0.4, 0.8, 0.75}.tag_write(42, rows);
+np::line_font<REAL>{1.5, 4.0, 2.0}.tag_write(42, rows);
+np::text_label<REAL>{12.0, "Path \"A\"\nnext pass"}.tag_write(42, rows);
+while (auto record = np::tag_read_record<REAL>(rows)) {
+    std::visit([tag = record->tag](const auto& owner) {
+        // *owner has its concrete geometry or presentation type.
+        (void)tag;
+        (void)owner;
+    }, record->value);
+}
+\end{lstlisting}
+
+Tags are unsigned base-ten \api{std::size_t} application values, not unique
+identifiers. Repeated tags, nonadjacent rows, and empty files are permitted.
+The consumer chooses association, omitted-style defaults, and label placement.
+Presentation rows do not alter SVG drawing state.
+
+\api{T::tag_read(input)} returns
+\api{std::optional<tagged_read_result<T>>}, with \api{tag} and a non-null
+\api{std::shared_ptr<T>} named \api{entity}. A typed reader requires its
+matching non-advisory type. \api{tag_read<REAL>} returns a
+\api{tagged_entity3} whose \api{entity3_ptr} variant contains only point,
+vector, sphere, and ordinary spline pointers. \api{tag_read_record<REAL>}
+returns a \api{tagged_record} with the seven-type \api{value} variant.
+
+Quoted labels escape backslash, double quote, newline, carriage return, and
+tab. Each record remains one physical row. Other ASCII control bytes are
+rejected; bytes at least 128 are preserved without UTF-8 validation. Writers
+validate public fields before emitting invalid data.
+
+\section{Advisory application and positioned messages}
+\api{application_info} writes an untagged row with two nonempty, unquoted
+tokens. ASCII whitespace/control bytes are not allowed in the tokens.
+\api{diagnostic_message3<REAL>} selects \api{warning}, \api{information}, or
+\api{error} using \api{diagnostic_level}, and supplies a finite 3D position,
+positive finite size, and escaped text. The default is informational, at the
+origin, size 12, with empty text.
+
+\begin{lstlisting}
+np::application_info{"path_exporter", "1.0"}.write(output);
+np::diagnostic_message3<REAL>{
+    np::diagnostic_level::warning, {1.0, 2.0, 3.0},
+    12.0, "Small clearance"}.tag_write(42, output);
+\end{lstlisting}
+\begin{lstlisting}[style=plain]
+application v1 path_exporter 1.0
+42 warning v1 1.0000e+00 2.0000e+00 3.0000e+00 1.2000e+01 "Small clearance"
+42 information v1 2.0000e+00 1.0000e+00 0.0000e+00 1.0000e+01 "Ready"
+43 error v1 3.0000e+00 0.0000e+00 1.0000e+00 1.4000e+01 "No contact"
+\end{lstlisting}
+These are output-only annotations: readers may ignore them and the built-in
+readers skip them. The application prefix alone identifies its advisory row;
+a diagnostic must have a valid unsigned tag and a recognised diagnostic type.
+Their versions and payloads are not decoded when skipped. Neither reader
+variant gains an advisory alternative. An error annotation does not itself
+terminate export or set the destination stream's failure state.
+
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}[node distance=6mm]
+ \node[draw=manualblue,fill=manuallight,rounded corners,minimum width=9.4cm,align=left] (a)
+ {\api{application v1 tool 1.0}\quad\textcolor{manualmuted}{skip advisory}};
+ \node[draw=manualblue,fill=manuallight,rounded corners,below=of a,minimum width=9.4cm,align=left] (b)
+ {\api{42 warning v1 ...}\quad\textcolor{manualmuted}{skip advisory}};
+ \node[draw=manualteal,fill=manualteal!8,rounded corners,below=of b,minimum width=9.4cm,align=left] (c)
+ {\api{42 point3 v1 ...}\quad\textcolor{manualteal}{decode and return}};
+ \node[draw=manualred,fill=manualred!5,rounded corners,below=of c,minimum width=9.4cm,align=left] (d)
+ {\api{43 point3 v1 1 2}\quad\textcolor{manualred}{failbit: incomplete}};
+ \draw[axis] (a)--(b); \draw[axis] (b)--(c); \draw[axis] (c)--(d);
+\end{tikzpicture}
+\caption{Reader calls skip advisory rows, then consume at most one required
+geometry or presentation row. Malformed required data still fails strictly.}
+\label{fig:tagged-reader}
+\end{figure}
+
+Malformed required rows set \api{failbit} after consuming their complete
+physical row. Unknown types, unsupported required versions, missing/extra
+fields, invalid tags, and invalid definitions fail. After clearing a
+recoverable state, reading resumes from the next row; a reader never searches
+past malformed required data. EOF and failure both return \api{nullopt}, so
+inspect the stream state. CRLF and a final valid row without a newline are
+accepted. Buffering and entity allocation can throw; applications needing
+resource bounds must enforce their own line-size and complexity limits.
+
+\section{Configuration and the hand-authored extension point}
+\api{config.hpp} exposes semantic version strings/numbers and Git metadata,
+including commit availability and dirty-state flags. Direct source includes
+use the source fallback. A normal CMake build generates an updated header;
+this standalone manual does not change that workflow. A repository without a
+first commit can report an unborn state. Frequently used macros are:
+\begin{itemize}
+\item \api{NURBSPATH_VERSION_STRING}, \api{NURBSPATH_VERSION_NUMBER};
+\item \api{NURBSPATH_GIT_COMMIT}, \api{NURBSPATH_GIT_COMMIT_AVAILABLE};
+\item \api{NURBSPATH_GIT_DIRTY}, \api{NURBSPATH_GIT_DESCRIBE};
+\item \api{NURBSPATH_CONFIG_GENERATED}.
+\end{itemize}
+
+The umbrella also includes \api{manual.hpp}, whose
+\api{nurbspath::manual} namespace is an extension point for future hand-authored
+functions. The current snapshot defines no algorithms there. It is distinct
+from this document's top-level \api{manual/} directory.

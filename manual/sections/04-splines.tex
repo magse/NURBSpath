@@ -1,0 +1,764 @@
+\chapter{NURBS curves and interpolation}
+\label{chap:splines}
+
+\section{One curve definition, two separate worlds}
+
+The ordinary curve types are \api{nurbs_spline2<REAL>} and
+\api{nurbs_spline3<REAL>}. Their coordinate storage is private, their definition
+is checked at construction and after each setter, and their active-domain
+endpoints are cached. The corresponding \api{nurbs_arr_spline2<REAL>} and
+\api{nurbs_arr_spline3<REAL>} types provide a different storage contract: a
+public, flattened \api{std::valarray<REAL>} that an optimizer can edit directly.
+All four types describe rational B-spline curves and provide position,
+derivative, tangent, curvature, length, and interpolation operations.
+
+The suffix is part of the geometry contract. A 2D curve evaluates to
+\api{point2<REAL>} and differentiates to \api{vector2<REAL>}; a 3D curve uses
+the corresponding 3D types. Constructing an array-backed curve from an ordinary
+curve, or converting it back, preserves that suffix. Embedding a 2D curve into
+3D is an explicit \api{project(plane, spline)} operation, described in
+Chapter~\ref{chap:entities}.
+
+For a curve with $C$ control points, degree $p$, weights $w_i$, and knots $K_j$,
+the complete definition satisfies
+\begin{equation}
+ C>p\geq1,\qquad \#w=C,\qquad \#K=C+p+1,
+ \qquad w_i>0,\qquad K_j\leq K_{j+1}.
+\end{equation}
+Coordinates, weights, knots, and the strictly positive definition tolerance
+must be finite. The knot domain used by the curve is
+\begin{equation}
+\boxed{\quad s\in[K_p,K_C]=[\api{s_min()},\api{s_max()}]\quad}
+\label{eq:spline-domain}
+\end{equation}
+and must have positive length. It is the \emph{active} domain; the first and
+last values in the stored knot vector need not be its bounds.
+
+\begin{manualnote}[Native parameters]
+The parameter is named $s$, but a general NURBS definition does not make $s$
+equal to distance traveled. Keep the native knot units when passing $s$ to
+evaluation, intersections, distances, or derivative functions. Interpolation
+preserves the supplied station values, including a nonzero first station.
+\end{manualnote}
+
+\section{Construction from a complete definition}
+\label{sec:spline-definition}
+
+The following fragment establishes a running example in the native 2D world.
+It uses five control points, cubic basis functions, nonunit weights, and a
+native domain of $[0,5]$. Code fragments in this chapter use the umbrella header
+\api{<nurbspath/nurbspath.hpp>}; standard-library facilities need their usual
+headers. The namespace alias \api{np} below is used throughout the chapter.
+
+\begin{lstlisting}[language=C++,caption={A complete ordinary 2D curve definition.}]
+namespace np = nurbspath;
+using real = double;
+using point = np::point2<real>;
+
+const std::vector<point> controls{
+    {0, 0}, {1, 2}, {2, -1}, {3, 2}, {4, 0}};
+const std::vector<real> weights{1, 1, 0.7, 1.5, 1};
+const std::vector<real> knots{0, 0, 0, 0, 2, 5, 5, 5, 5};
+
+np::nurbs_spline2<real> curve(
+    controls, weights, knots, 3, false, 1e-10);
+const point start = curve.get_start();
+const point end = curve.get_end();
+const point middle = curve.point_at(2.5);
+\end{lstlisting}
+
+\begin{figure}[tbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+ width=.91\linewidth,height=6.2cm,axis equal image,
+ axis lines=left,xlabel={$x$},ylabel={$y$},
+ xmin=-.2,xmax=4.3,ymin=-1.65,ymax=2.6,clip=false,
+ grid=major,grid style={manualmuted!15},
+ legend style={draw=none,fill=white,font=\small,
+   at={(.5,-.22)},anchor=north},legend columns=1]
+\addplot[manualmuted,dashed,mark=*,mark size=2pt]
+ table[x=x,y=y]{pictures/spline_controls.dat};
+\addlegendentry{control polygon}
+\addplot[manualblue,very thick,no marks]
+ table[x=x,y=y]{pictures/spline_curve.dat};
+\addlegendentry{evaluated rational curve}
+\node[anchor=north west,font=\small] at (axis cs:0,-.1) {$P_0$, $w_0=1$};
+\node[anchor=south,font=\small] at (axis cs:1,2) {$P_1$, $w_1=1$};
+\node[anchor=north,font=\small] at (axis cs:2,-1.12) {$P_2$, $w_2=0.7$};
+\node[anchor=south,font=\small] at (axis cs:3,2) {$P_3$, $w_3=1.5$};
+\node[anchor=north east,font=\small] at (axis cs:4,-.1) {$P_4$, $w_4=1$};
+\end{axis}
+\end{tikzpicture}
+\caption{Control points steer the curve; they are generally not samples on
+it. The blue path is evaluated by the library. The clamped endpoint blocks in
+this example make the evaluated endpoints coincide with $P_0$ and $P_4$.}
+\label{fig:spline-controls}
+\end{figure}
+
+The complete-definition constructors accept three \api{std::vector}s followed
+by the degree. Omitting the closure argument constructs an open curve; an
+optional tolerance follows the degree in that overload. Supplying
+\api{closed} before the tolerance enables the seam requirement. In 3D, replace
+\api{point2} and \api{nurbs_spline2} with their 3D counterparts. There is no
+default empty spline object: construction establishes a usable definition.
+
+An open curve is allowed to have coincident endpoints. A closed curve requires
+that coincidence, but does not by itself guarantee a smooth seam, matching
+tangent vectors, matching curvature, or a periodic knot representation. For
+the ordinary definition check, endpoint separation must not exceed
+$16\,\tau\,\max(1,|\hbox{control coordinates}|)$, where $\tau$ is the definition
+tolerance. Closed interpolation also checks its first and last input samples
+against the supplied tolerance before solving.
+
+The getter families \api{get_control_points()}, \api{get_weights()}, and
+\api{get_knots()} return constant references for ordinary splines.
+\api{get_control_point(i)}, \api{get_weight(i)}, and \api{get_knot(i)} select
+individual values; an invalid index throws \api{std::out_of_range}.
+\api{degree()}, \api{tolerance()}, and \api{is_closed()} report metadata.
+\api{get_start()} and \api{get_end()} return constant references to evaluated,
+cached endpoints, not editable definition fields.
+
+\subsection{Starting with a standard straight curve}
+
+When only endpoints and a number of controls are known, the standard
+constructor lays the control points uniformly along the segment using
+\api{lerp}, assigns unit weights, and builds standard open-clamped knots. Its
+native domain is $[0,\operatorname{distance}(\mathrm{start},\mathrm{end})]$.
+The degree must be positive and smaller than the requested control count.
+The endpoints must define a finite, positive domain length.
+
+\begin{lstlisting}[language=C++,caption={Standard construction and knot replacement.}]
+np::nurbs_spline3<real> straight(
+    np::point3<real>{0, 0, 0},
+    np::point3<real>{4, 0, 3}, 6, 3);
+// Native domain is initially [0, 5].
+straight.set_standard_knots(10.0, 20.0);
+// Explicit-tolerance overload, without a closure argument:
+np::nurbs_spline2<real> straight2(
+    point{0, 0}, point{4, 0}, 5, 2, 1e-10);
+straight2.set_standard_knots(8.0);  // Domain [0, 8].
+\end{lstlisting}
+
+\api{set_standard_knots(s_end)} uses $[0,s_\mathrm{end}]$.
+\api{set_standard_knots(s_start,s_end)} uses the stated bounds. Both repeat
+each endpoint $p+1$ times and distribute any simple interior knots uniformly.
+If $C=p+1$, the two endpoint blocks form the entire knot vector. The generated
+spans must remain distinct and have finite positive lengths with finite
+reciprocals in \api{REAL}. Invalid domains or numerically unusable spans are
+rejected before the curve changes.
+
+Replacing standard knots can change the distribution of points along an
+existing curve. If the intent is only to rescale its parameter, apply one
+affine transformation to \emph{every} old knot and pass the complete result
+to \api{set_knots}; this preserves the geometric locus while changing its
+native $s$ values and derivative scale. A closure flag on the straight
+constructor still requires the ordinary endpoint check; it does not invent a
+loop between two different endpoints.
+
+\begin{figure}[tbp]
+\centering
+\begin{tikzpicture}[x=1.65cm,y=1cm,font=\small]
+\draw[->,manualmuted] (-.3,0)--(5.5,0) node[right] {$s$};
+\draw[manualblue,line width=3pt] (0,0)--(5,0);
+\foreach \x/\lab in {0/{K_0=K_1=K_2=K_3},2/{K_4},5/{K_5=K_6=K_7=K_8}}{
+ \draw[manualink] (\x,-.13)--(\x,.13);
+ \node[above=6pt] at (\x,0) {$\lab$};}
+\node[below=6pt] at (0,0) {$s_{\min}=0$};
+\node[below=6pt] at (2,0) {$2$};
+\node[below=6pt] at (5,0) {$s_{\max}=5$};
+\draw[<->,manualteal] (0,-1.05)--(2,-1.05)
+ node[midway,below] {first nonempty span};
+\draw[<->,manualteal] (2,-1.05)--(5,-1.05)
+ node[midway,below] {second nonempty span};
+\node[align=center,text=manualmuted] at (2.5,-2.1)
+ {Cubic running example: $C=5$, $p=3$, nine stored knots.\\
+ The two spans have different native parameter lengths.};
+\end{tikzpicture}
+\caption{Stored knots and the active domain. Endpoint multiplicities describe
+clamping; they are not extra finite intervals to sample.}
+\label{fig:spline-knots}
+\end{figure}
+
+\section{Weights and exact conic geometry}
+
+For basis functions $N_{i,p}$, a rational curve is
+\begin{equation}
+ \mathbf C(s)=\frac{\sum_{i=0}^{C-1}N_{i,p}(s)w_i\mathbf P_i}
+                         {\sum_{i=0}^{C-1}N_{i,p}(s)w_i}.
+\label{eq:rational-curve}
+\end{equation}
+The library evaluates only the nonzero basis functions in the selected knot
+span. With positive weights, a control point with a larger relative weight
+has more influence where its basis function is nonzero. Uniformly multiplying
+the weights leaves the mathematical quotient unchanged, but a very small
+common scale can trigger the implementation's near-zero homogeneous-weight
+check. In particular, positivity alone is not a guarantee that every
+arbitrarily scaled floating-point definition can be evaluated.
+
+A rational quadratic represents a quarter of the unit circle exactly in real
+arithmetic. It uses three controls, with the corner control carrying weight
+$1/\sqrt2$. The native parameter below is $s\in[0,1]$; it is neither the circle
+angle $u$ nor the traveled arc length.
+
+\begin{lstlisting}[language=C++,caption={An exact rational quadratic quarter circle.}]
+np::nurbs_spline2<real> quarter(
+    std::vector<point>{{1, 0}, {1, 1}, {0, 1}},
+    std::vector<real>{1, std::sqrt(0.5), 1},
+    std::vector<real>{0, 0, 0, 1, 1, 1}, 2);
+const point diagonal = quarter.evaluate(0.5);
+const real quarter_curvature = quarter.curvature(0.5);
+const auto rational_third = quarter.third_derivative(0.5);
+\end{lstlisting}
+
+\begin{figure}[tbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+ width=.7\linewidth,height=6.2cm,axis equal image,
+ axis lines=left,xlabel={$x$},ylabel={$y$},
+ xmin=-.12,xmax=1.25,ymin=-.12,ymax=1.3,
+ xtick={0,.5,1},ytick={0,.5,1},grid=major,
+ grid style={manualmuted!15}]
+\addplot[manualmuted,dashed,mark=*,mark size=2pt]
+ coordinates {(1,0) (1,1) (0,1)};
+\addplot[manualblue,very thick,no marks]
+ table[x=x,y=y]{pictures/rational_circle.dat};
+\draw[manualteal,->] (axis cs:0,0)--(axis cs:.7071,.7071);
+\addplot[only marks,manualorange,mark=*,mark size=2.5pt]
+ coordinates {(.7071,.7071)};
+\node[anchor=south west,font=\small] at (axis cs:.72,.73)
+ {$s=\frac12$};
+\node[anchor=south east,font=\small] at (axis cs:1,1)
+ {$w_1=1/\sqrt2$};
+\node[anchor=north,font=\small] at (axis cs:.4,.18) {$r=1$};
+\end{axis}
+\end{tikzpicture}
+\caption{A quadratic rational curve lies on the unit circle, even though its
+control polygon follows the two sides of a square. Its curvature is one in
+inverse world units. The plotted blue points are library evaluations.}
+\label{fig:rational-circle}
+\end{figure}
+
+Rounded output at the midpoint is
+\begin{lstlisting}[caption={Rounded numerical preview; scientific precision is four decimals.}]
+position: 7.0711e-01  7.0711e-01
+curvature: 1.0000e+00
+\end{lstlisting}
+Although the homogeneous numerator and denominator have degree two within a
+span, their quotient can have a nonzero third derivative. Calling
+\api{third_derivative} on this quadratic is therefore meaningful; setting it
+to zero solely because $p=2$ would be incorrect.
+
+\section{Evaluation and analytic differential geometry}
+\label{sec:spline-derivatives}
+
+\api{evaluate(s)} and \api{point_at(s)} are equivalent position calls.
+\api{derivatives_at(s)} computes position, first derivative, and second
+derivative together. The result is \api{spline_derivatives2<REAL>} or
+\api{spline_derivatives3<REAL>}, with members \api{point}, \api{first}, and
+\api{second}. Separate calls are available as \api{first_derivative(s)},
+\api{second_derivative(s)}, and \api{third_derivative(s)}.
+
+\begin{lstlisting}[language=C++,caption={Position, derivatives, tangent, and curvature.}]
+const real query_s = 2.5;
+const auto jet = curve.derivatives_at(query_s);
+const auto velocity = jet.first;
+const auto acceleration = jet.second;
+const auto third = curve.third_derivative(query_s);
+const auto unit_tangent = curve.tangent(query_s);
+const real curvature = curve.curvature(query_s);
+// A consumer chooses how long a derivative arrow should appear:
+const point arrow_tip = jet.point + 0.25 * velocity;
+\end{lstlisting}
+
+Let $\mathbf A^{(k)}=\sum_i N_{i,p}^{(k)}w_i\mathbf P_i$ and
+$W^{(k)}=\sum_i N_{i,p}^{(k)}w_i$. Analytic differentiation is performed in
+homogeneous form and then converted with the quotient recurrence
+\begin{align}
+\mathbf C^{(0)}&=\mathbf A^{(0)}/W^{(0)},\\
+\mathbf C^{(r)}&=\frac{1}{W^{(0)}}\left(
+ \mathbf A^{(r)}-\sum_{j=1}^{r}\binom rj
+ W^{(j)}\mathbf C^{(r-j)}\right),\qquad r=1,2,3.
+\label{eq:spline-quotient}
+\end{align}
+Homogeneous derivatives above the degree are zero, while the quotient
+recurrence continues through the requested order. These are analytic basis
+derivatives, rather than finite differences between neighboring points.
+
+The derivatives are with respect to the native $s$. If $s$ has units of length,
+the first derivative is dimensionless, the second has inverse-length units,
+and the third has inverse-square-length units. If $s$ is dimensionless,
+all three retain world-length units. More generally,
+$\mathbf C^{(r)}$ has units of world length divided by parameter units to
+power $r$. Scaling a derivative arrow for a diagram does not change these
+API meanings.
+
+\begin{figure}[tbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+ width=.47\linewidth,height=5.5cm,axis lines=left,
+ xlabel={$s$},ylabel={first derivative},xmin=0,xmax=5,
+ grid=major,grid style={manualmuted!15},
+ legend style={draw=none,font=\small},legend pos=north east]
+\addplot[manualblue,thick] table[x=s,y=dx]{pictures/spline_curve.dat};
+\addlegendentry{$C'_x$}
+\addplot[manualorange,thick] table[x=s,y=dy]{pictures/spline_curve.dat};
+\addlegendentry{$C'_y$}
+\end{axis}
+\end{tikzpicture}\hfill
+\begin{tikzpicture}
+\begin{axis}[
+ width=.47\linewidth,height=5.5cm,axis lines=left,
+ xlabel={$s$},ylabel={$\kappa(s)$},xmin=0,xmax=5,
+ grid=major,grid style={manualmuted!15}]
+\addplot[manualteal,thick] table[x=s,y=curvature]{pictures/spline_curve.dat};
+\end{axis}
+\end{tikzpicture}
+\caption{Analytic first-derivative components and curvature for the running
+cubic curve. Speed and turning vary through the native domain. The plotted
+values come from \api{first_derivative} and \api{curvature}.}
+\label{fig:spline-differential}
+\end{figure}
+
+\subsection{Tangent and curvature contracts}
+
+\api{tangent(s,tolerance)} normalizes the first derivative and throws
+\api{std::domain_error} when its length is too small. Its default threshold
+is the matching vector type's \api{default_tolerance()}. This is a derivative
+length threshold; it is distinct from the spline definition tolerance and
+from the world-distance tolerances used by geometric queries.
+
+\api{curvature(s,tangent_tolerance)} returns an unsigned magnitude:
+\begin{equation}
+ \kappa_2=\frac{|\mathbf C'\mathbin{\times}\mathbf C''|}
+                  {\|\mathbf C'\|^3},\qquad
+ \kappa_3=\frac{\|\mathbf C'\mathbin{\times}\mathbf C''\|}
+                  {\|\mathbf C'\|^3}.
+\end{equation}
+The 2D cross product in this formula is a scalar. Curvature has inverse
+world-length units and is independent of regular reparameterization while
+the required arithmetic remains representable. It does not encode the sign
+of left or right turning. The threshold must be finite and nonnegative;
+an invalid threshold throws \api{std::invalid_argument}. A nonfinite or
+insufficient first-derivative length, a near-zero homogeneous weight, or an
+unrepresentable curvature throws \api{std::domain_error}.
+
+\subsection{Domain edges and repeated knots}
+
+A finite $s$ just outside the active domain by no more than the definition
+tolerance is clamped to the nearest bound. A nonfinite $s$, or a larger
+excursion, throws \api{std::out_of_range}. This tolerance is a boundary
+allowance, not an instruction to extrapolate the spline.
+
+At an internal knot, a derivative that is discontinuous uses the right-hand
+nonempty span. At \api{s_min()}, evaluation chooses the first nonempty span
+on the right, and at \api{s_max()} it chooses the last nonempty span on the
+left. Repeated boundary knots can leave empty spans; those spans are skipped.
+This convention is especially relevant when plotting second or third
+derivatives near knots with reduced continuity. A single returned derivative
+at such a knot must not be mistaken for a two-sided smooth derivative.
+
+\section{Global interpolation through sample positions}
+\label{sec:spline-interpolation}
+
+Use the static \api{interpolate(samples,stations,...)} factory when positions
+are measured points that the result should pass through. The positions are
+\emph{samples}, not control points. Interpolation solves a global linear
+system for a new set of control points and assigns unit weights. It produces
+a valid non-rational subset of the NURBS representation, with averaged
+clamped knots.
+
+\begin{lstlisting}[language=C++,caption={Interpolation preserves the supplied station domain.}]
+const std::vector<point> samples{
+    {0, 0}, {1, 1.2}, {2, 0.2}, {3, 1.5}, {4, 1}};
+const std::vector<real> stations{2, 3.2, 4.7, 6.5, 8};
+auto fit = np::nurbs_spline2<real>::interpolate(
+    samples, stations, 3, false, 1e-10);
+
+for (std::size_t i = 0; i < samples.size(); ++i) {
+    const point fitted_sample = fit.evaluate(stations[i]);
+    const real residual = np::distance(fitted_sample, samples[i]);
+    // Inspect residual in the same 2D world as the input.
+    static_cast<void>(residual);
+}
+// fit.s_min() == 2; fit.s_max() == 8.
+\end{lstlisting}
+
+\begin{figure}[tbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+ width=.9\linewidth,height=6.2cm,axis lines=left,
+ xlabel={$x$},ylabel={$y$},xmin=-.25,xmax=4.3,ymin=-.25,ymax=1.85,
+ clip=false,
+ grid=major,grid style={manualmuted!15},
+ legend style={draw=none,fill=white,font=\small},legend pos=south east]
+\addplot[manualblue,very thick,no marks]
+ table[x=x,y=y]{pictures/interpolation_curve.dat};
+\addlegendentry{global cubic interpolant}
+\addplot[only marks,manualorange,mark=*,mark size=2.8pt]
+ table[x=x,y=y]{pictures/interpolation_samples.dat};
+\addlegendentry{input samples}
+\node[anchor=north west,font=\small] at (axis cs:0,0) {$s=2$};
+\node[anchor=south,font=\small] at (axis cs:1,1.2) {$s=3.2$};
+\node[anchor=north,font=\small] at (axis cs:2,.2) {$s=4.7$};
+\node[anchor=south,font=\small] at (axis cs:3,1.5) {$s=6.5$};
+\node[anchor=south east,font=\small,xshift=-2pt,yshift=2pt]
+ at (axis cs:4,1) {$s=8$};
+\end{axis}
+\end{tikzpicture}
+\caption{A curve through measured positions. Each annotation is the original
+native station, not a newly normalized coordinate. The library supplies the
+evaluated curve and sample positions used in this TikZ picture.}
+\label{fig:spline-interpolation}
+\end{figure}
+
+The input vectors must have equal size and contain at least two samples.
+All samples and stations must be finite; station values must be strictly
+increasing. The requested degree must be positive, and the actual degree is
+\begin{equation}
+ p=\min(\text{requested degree},\text{sample count}-1).
+\end{equation}
+The default requested degree is three and the default interpolation tolerance
+is $10^{-10}$. Invalid samples, stations, closure, or tolerance throw
+\api{std::invalid_argument}; a singular interpolation system throws
+\api{std::domain_error}. Floating-point residuals should be assessed with a
+suitable tolerance rather than exact coordinate equality.
+
+Let the sample stations be $t_0,\ldots,t_n$. The clamped endpoint blocks contain
+$p+1$ copies of $t_0$ and $t_n$. The simple interior knots are averages,
+\begin{equation}
+ K_{j+p}=\frac{t_j+t_{j+1}+\cdots+t_{j+p-1}}{p},
+ \qquad j=1,\ldots,n-p.
+\end{equation}
+For the example, the sole interior knot is
+$(3.2+4.7+6.5)/3=4.8$. Solving
+$\sum_i N_{i,p}(t_j)\mathbf P_i=\mathbf Q_j$ independently for each coordinate
+makes all samples influence the global result. Adding or moving one sample
+can therefore change more than the adjacent visible arc.
+
+\begin{manualnote}[Stations remain stations]
+The caller supplies the arc-length stations; interpolation does not compute
+them from the sample positions. Their values are retained, without silently
+normalizing the domain. Even if the stations describe measured arc length,
+the interpolated curve between stations does not promise unit speed or an
+exact continuous arc-length parameterization.
+\end{manualnote}
+
+\subsection{Closed input and replacing an existing curve}
+
+The overload with \api{closed=true} requires coincident first and final sample
+positions at \emph{different}, strictly increasing station values. Repeat
+the closing position, not its station. This constructs a closed interpolant
+using the same averaged clamped-knot approach. It does not impose periodic
+derivatives at the seam.
+
+\begin{lstlisting}[language=C++,caption={Closed interpolation and adopting a new sample set.}]
+const std::vector<point> loop_samples{
+    {0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0}};
+const std::vector<real> loop_stations{0, 1, 2, 3, 4};
+auto loop = np::nurbs_spline2<real>::interpolate(
+    loop_samples, loop_stations, 3, true, 1e-10);
+
+auto refitted = curve;
+refitted.adopt_to_points(samples, stations, 2, false, 1e-10);
+// Unlike definition setters, adoption creates a new degree-two fit.
+\end{lstlisting}
+
+\api{adopt_to_points} has the same open and closed overload families as
+\api{interpolate}. It first constructs the interpolant and then replaces the
+current object. A failed solve leaves the original object available. Its
+requested degree, tolerance, and closure describe the replacement; they are
+not constrained to the old curve's metadata. Both array-backed curve types
+also supply these interpolation and adoption operations in their own world.
+
+\section{Two different notions of length}
+
+\api{get_polygon_length()} sums distances between consecutive stored control
+points:
+\begin{equation}
+ L_\mathrm{polygon}=\sum_{i=1}^{C-1}\|\mathbf P_i-\mathbf P_{i-1}\|.
+\end{equation}
+This is the length of the \emph{control polygon}, not an integration of the
+curve. It depends on neither weights nor knots. Even for a closed curve, it
+does not add an extra last-to-first edge. For ordinary splines this getter
+requires no evaluation; for array-backed splines it first validates the
+current public definition.
+
+\api{approximate_arc_length(segment_count)} instead evaluates a polyline at
+uniformly spaced native parameters, including both active-domain endpoints:
+\begin{equation}
+ s_j=s_\mathrm{min}+\frac{j}{M}(s_\mathrm{max}-s_\mathrm{min}),\qquad
+ L_M=\sum_{j=1}^{M}\|\mathbf C(s_j)-\mathbf C(s_{j-1})\|.
+\end{equation}
+The default is $M=512$; zero segments throw \api{std::invalid_argument}.
+The result is a sampling estimate in world units. It is not an adaptive
+quadrature result and provides no requested-error certificate. Tight turns
+or short features may need many more segments, especially when the native
+parameter allocates little interval length to them.
+
+\begin{lstlisting}[language=C++,caption={Compare a control polygon with sampled curve lengths.}]
+const real polygon_length = curve.get_polygon_length();
+const real coarse_length = curve.approximate_arc_length(16);
+const real finer_length = curve.approximate_arc_length(512);
+const real circle_length = quarter.approximate_arc_length(512);
+// circle_length approaches pi/2 as the segments resolve the arc.
+\end{lstlisting}
+
+\begin{figure}[tbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+ width=.87\linewidth,height=5.8cm,axis lines=left,
+ xlabel={$x$},ylabel={$y$},xmin=-.15,xmax=4.15,ymin=-.15,ymax=1.45,
+ grid=major,grid style={manualmuted!15},
+ legend style={draw=none,fill=white,font=\small,
+   at={(.5,-.22)},anchor=north},legend columns=1]
+\addplot[manualblue,line width=1.5pt]
+ table[x=x,y=y]{pictures/spline_curve.dat};
+\addlegendentry{densely evaluated curve}
+\addplot[manualorange,thick,mark=*,mark size=2pt,each nth point=40]
+ table[x=x,y=y]{pictures/spline_curve.dat};
+\addlegendentry{coarse uniform-$s$ chords}
+\end{axis}
+\end{tikzpicture}
+\caption{Arc-length sampling joins evaluated points with straight chords.
+Uniform native-parameter steps generally produce unequal world-space chord
+lengths. The coarse orange polyline illustrates the approximation, not an
+adaptive accuracy guarantee.}
+\label{fig:spline-length}
+\end{figure}
+
+When comparing successive estimates, retain the sampling count along with
+the value. Agreement at two finite counts is useful evidence for that curve,
+but cannot establish that all continuous features were resolved. The same
+qualification applies to the sample-based geometric queries in
+Chapter~\ref{chap:algorithms}.
+
+\section{Checked editing and flattened scalar parameters}
+\label{sec:spline-editing}
+
+Ordinary spline definitions are edited through setters. The single-value
+setters validate a complete detached candidate: \api{set_control_point}
+edits one position, \api{set_weight} one weight, and \api{set_knot} one knot.
+The vector replacements \api{set_control_points},
+\api{set_weights}, and \api{set_knots} retain the other definition fields.
+\api{set_tolerance} and \api{set_closed} also recheck the complete candidate,
+including any seam requirement. None of these operations changes the degree.
+
+\api{set_definition(control_points,weights,knots,closed,tolerance)} replaces
+every mutable definition field together while retaining the current degree.
+It is the appropriate call for changing correlated counts, rescaling an
+entire knot vector, or editing both sides of a closed seam. Successful edits
+refresh the cached endpoints; failed edits preserve the original curve.
+References, iterators, and pointers previously obtained from ordinary
+definition getters become invalid after a successful setter.
+
+\begin{lstlisting}[language=C++,caption={Atomic bulk edits keep correlated changes together.}]
+auto edited = curve;
+auto edited_controls = edited.get_control_points();  // Detached copy.
+auto edited_knots = edited.get_knots();              // Detached copy.
+edited_controls.front() = {-1, 0};
+edited_controls.back() = {5, 0};
+for (real& knot : edited_knots) {
+    knot = 10 + 2 * knot;
+}
+edited.set_definition(
+    edited_controls, edited.get_weights(), edited_knots,
+    edited.is_closed(), edited.tolerance());
+// New endpoints and domain [10, 20] are immediately available.
+\end{lstlisting}
+
+\subsection{An indexable view for fitting code}
+
+\api{number_of_parameters()}, \api{get_parameter(index)}, and
+\api{parameter_name(index)} expose the same flattened scalar ordering in all
+four spline types. Control coordinates come first in point-major order,
+followed by all weights, followed by all knots. In dimension $d$, the total is
+$(d+2)C+p+1$ scalars. Degree, tolerance, and closure are deliberately outside
+this scalar sequence. Names are \api{P[0].x}, \api{P[0].y}, optionally
+\api{P[0].z}, then later controls, \api{W[0]}, and finally \api{K[0]}, all
+with zero-based indices.
+
+\begin{figure}[tbp]
+\centering
+\begin{tikzpicture}[x=.54cm,y=1cm,font=\small]
+\fill[manualblue!13] (0,0) rectangle (6,1);
+\fill[manualteal!15] (6,0) rectangle (9,1);
+\fill[manualorange!18] (9,0) rectangle (15,1);
+\draw[manualmuted] (0,0) rectangle (15,1);
+\foreach \x in {1,...,14} \draw[manualmuted!45] (\x,0)--(\x,1);
+\foreach \x/\lab in {0/{x_0},1/{y_0},2/{x_1},3/{y_1},4/{x_2},5/{y_2},6/{w_0},7/{w_1},8/{w_2},9/{K_0},10/{K_1},11/{K_2},12/{K_3},13/{K_4},14/{K_5}}
+ \node at (\x+.5,.5) {$\lab$};
+\draw[<->,manualblue] (0,-.4)--(6,-.4)
+ node[midway,below,align=center] {six\\coordinates};
+\draw[<->,manualteal] (6,-.4)--(9,-.4)
+ node[midway,below,align=center] {three\\weights};
+\draw[<->,manualorange] (9,-.4)--(15,-.4)
+ node[midway,below,align=center] {six\\knots};
+\node[above,align=center] at (7.5,1.25)
+ {2D quadratic example: $C=3$, $p=2$, $N=15$.};
+\node[below,align=center,text=manualmuted] at (7.5,-1.4)
+ {Scalar indices: coordinates $[0,6)$, weights $[6,9)$, knots $[9,15)$.};
+\end{tikzpicture}
+\caption{Flattened numeric ordering for an ordinary spline's indexed
+parameters and an array-backed spline's public \api{parameters} storage.
+Typed metadata is stored separately.}
+\label{fig:spline-layout}
+\end{figure}
+
+\api{set_parameter(index,value)} returns \api{true} only if the full edited
+candidate is accepted. It returns \api{false} for an invalid index or a rejected
+definition, retaining the original state. Allocation failures can still
+throw. This return-value convention differs from the named component setters,
+whose invalid candidate or index is reported by an exception.
+
+\api{set_parameters(const REAL*)} copies exactly
+\api{number_of_parameters()} values in this ordering before validating.
+The pointer is not retained. It must be nonnull and address a sufficiently
+long readable buffer; the library cannot discover a raw pointer's extent.
+For a complete numeric change, prepare a detached vector and call once:
+
+\begin{lstlisting}[language=C++,caption={Indexed parameter names and one validated bulk copy.}]
+std::vector<real> candidate(curve.number_of_parameters());
+for (std::size_t i = 0; i < candidate.size(); ++i) {
+    candidate[i] = curve.get_parameter(i);
+    const std::string name = curve.parameter_name(i);
+    static_cast<void>(name);
+}
+candidate[3] += 0.1;  // P[1].y in the 2D point-major layout.
+auto scalar_edited = curve;
+scalar_edited.set_parameters(candidate.data());
+const bool accepted = scalar_edited.set_parameter(0, -0.2);
+static_cast<void>(accepted);
+\end{lstlisting}
+
+There is no endpoint setter: an endpoint is derived from the definition.
+Change the appropriate control-point definition, then read the refreshed
+endpoint. Do not assume the first control point is always the active start:
+that familiar identity depends on clamped endpoint knots.
+
+\section{Array-backed curves for direct numeric work}
+\label{sec:array-splines}
+
+The array-backed classes are independent types, not subclasses of the
+ordinary splines. They offer the same core geometry, checked setters, and
+interpolation calls, plus a public \api{parameters} array and layout/range
+queries. Their aliases \api{real_t} and \api{parameter_index_range} name the
+scalar type and the allocation-free range of flattened scalar indices.
+
+Construction can use endpoints with a control count and degree, component
+vectors with a degree, a flattened \api{std::valarray<REAL>} with a degree,
+or an explicit copy from the corresponding ordinary spline. The optional
+closure and tolerance forms mirror these choices. The flattened constructor
+derives $C$ from the scalar count $N$:
+\begin{equation}
+ \begin{array}{ll}
+ \text{2D:}&N=4C+p+1,\\
+ \text{3D:}&N=5C+p+1.
+ \end{array}
+\end{equation}
+The inferred count must be integral and exceed the degree. A 2D sequence
+cannot be interpreted as a 3D sequence simply by choosing another type.
+
+\begin{lstlisting}[language=C++,caption={A flattened quadratic and same-world conversions.}]
+const std::valarray<real> flat_quarter{
+    1, 0,  1, 1,  0, 1,       // Three XY control points.
+    1, std::sqrt(0.5), 1,       // Three weights.
+    0, 0, 0, 1, 1, 1};        // Six knots.
+np::nurbs_arr_spline2<real> array_quarter(flat_quarter, 2);
+
+np::nurbs_arr_spline2<real> array_curve(curve);
+np::nurbs_spline2<real> vector_curve(array_curve);
+auto vector_copy = array_curve.to_nurbs_spline();
+const point array_point = array_curve.evaluate(2.5);
+\end{lstlisting}
+
+These conversions copy the complete definition and preserve control points,
+weights, knots, degree, tolerance, closure, and native domain. They validate
+the current source array and can fail if it was edited into an invalid state.
+The same operations exist between \api{nurbs_arr_spline3} and
+\api{nurbs_spline3}. For shared ownership, the matching
+\api{make_nurbs_spline2}, \api{make_nurbs_spline3},
+\api{make_nurbs_arr_spline2}, and \api{make_nurbs_arr_spline3} allocation helpers
+are covered in Chapter~\ref{chap:creators}. Ordinary allocation helpers also
+accept component valarrays; that convenience overload does not turn an
+ordinary curve into the flattened array-backed type.
+
+\subsection{Direct editing, validation, and range meanings}
+
+Direct array edits intentionally bypass checked setters. They can temporarily
+leave invalid weights, bad knot order, a broken closed seam, or a malformed
+array size. \api{validate()} checks the current layout, values, native domain,
+and required seam. Geometric operations perform their own current-state
+validation before using the array; they reject malformed storage before
+indexing through its inferred layout.
+
+No endpoint or other geometry cache is retained. \api{get_start()},
+\api{get_end()}, \api{s_min()}, and \api{s_max()} derive their answers from
+the current validated storage. Point getters reconstruct point values from
+their coordinates; they do not alias adjacent scalars as a point object.
+\api{get_control_points()}, \api{get_weights()}, and \api{get_knots()} return
+detached vectors, unlike the ordinary spline getters' constant references.
+Layout and component-access getters check shape; call \api{validate()} when
+the whole definition, including numerical values and closure, must be checked.
+\api{number_of_parameters()} reports the public array size even if its current
+shape is malformed.
+
+\api{control_point_count()}, \api{weight_count()}, and \api{knot_count()}
+report component counts. The three range getters return \emph{flattened
+scalar indices}, despite the word \api{count} in their names:
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
+\toprule
+Range getter & 2D indices & 3D indices\\
+\midrule
+\api{get_control_point_count_range()} & $[0,2C)$ & $[0,3C)$\\
+\api{get_weight_count_range()} & $[2C,3C)$ & $[3C,4C)$\\
+\api{get_knot_count_range()} & $[3C,N)$ & $[4C,N)$\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{lstlisting}[language=C++,caption={Use scalar ranges without assuming their offsets.}]
+auto optimized = array_curve;
+for (const auto i : optimized.get_weight_count_range()) {
+    optimized.parameters[i] *= 1.25;
+}
+optimized.validate();
+
+auto proposed = optimized.parameters;  // Detached valarray copy.
+proposed[3] += 0.2;                    // Modify P[1].y.
+optimized.set_parameters(proposed);    // Check before committing.
+\end{lstlisting}
+
+A range captures bounds when requested. Obtain a new range after replacing
+or resizing \api{parameters}; do not reuse stale bounds. To preserve atomic
+updates, prefer the array-specific
+\api{set_parameters(std::valarray<REAL>)} or the common checked setter
+families. The raw-pointer overload copies the current array's scalar count
+and supports a source pointer into that current storage by detaching first.
+\api{set_parameter} additionally returns \api{false} for a malformed current
+shape, while allocation failure can still throw.
+
+\subsection{Choosing the storage contract}
+
+Use an ordinary spline when callers should see a continuously valid object
+with private storage, stable metadata access, and cached endpoint queries.
+Use an array-backed spline when numeric fitting code needs an openly
+replaceable scalar array and can take responsibility for validating its
+edits. Both evaluate in their own Cartesian world and use analytic
+derivatives. Neither conversion nor direct array arithmetic is a coordinate
+transform.
+
+The persistence, projection, drawing, distance, and intersection interfaces
+are documented with their accepted types in later chapters and the API
+reference. When an operation accepts an ordinary spline specifically, call
+\api{to_nurbs_spline()} explicitly; do not assume inheritance or an implicit
+conversion. The ordinary 3D spline supplies \api{tag_write} and its static
+\api{tag_read}; array-backed splines can use an explicit ordinary conversion
+for that 3D tagged representation.
