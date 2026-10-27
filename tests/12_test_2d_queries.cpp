@@ -52,6 +52,41 @@ int main() {
     const auto miss = nurbspath::intersect_ray_circle(
         ray2<real>({-2.0, 2.0}, {1.0, 0.0}), unit_circle, settings);
     check(!miss.has_intersection(), "2D ray-circle no contact");
+    for (real scale : {1e-11, 1.0, 1e12}) {
+        const auto scaled_crossing = nurbspath::intersect_ray_circle(
+            ray2<real>({-3.0, 0.0}, {scale, 0.0}), unit_circle, settings);
+        check(scaled_crossing.points.size() == 2,
+              "2D ray-circle preserves contacts across direction scales");
+        if (scaled_crossing.points.size() == 2) {
+            check_point2(scaled_crossing.points[0].point, {-1.0, 0.0}, 1e-8,
+                         "scaled 2D ray-circle entry point");
+            check_point2(scaled_crossing.points[1].point, {1.0, 0.0}, 1e-8,
+                         "scaled 2D ray-circle exit point");
+            check_near(scaled_crossing.points[0].s * scale, 2.0, 1e-8,
+                       "scaled 2D ray-circle entry native parameter");
+            check_near(scaled_crossing.points[1].s * scale, 4.0, 1e-8,
+                       "scaled 2D ray-circle exit native parameter");
+            check(scaled_crossing.points[0].s < scaled_crossing.points[1].s,
+                  "scaled 2D ray-circle contacts remain ordered and distinct");
+            for (const auto& hit : scaled_crossing.points) {
+                check(hit.residual <= settings.residual_tolerance * 2.0,
+                      "scaled 2D ray-circle residual tolerance");
+            }
+        }
+        check(nurbspath::intersect_ray_circle(
+                  ray2<real>({-2.0, 1.0}, {scale, 0.0}),
+                  unit_circle, settings).points.size() == 1,
+              "scaled 2D ray-circle tangent is returned once");
+        const auto scaled_endpoint = nurbspath::intersect_ray_circle(
+            ray2<real>({1.0, 0.0}, {scale, 0.0}), unit_circle, settings);
+        check(scaled_endpoint.points.size() == 1 &&
+                  scaled_endpoint.points.front().s == 0.0,
+              "scaled 2D ray-circle endpoint preserves s zero");
+        check(!nurbspath::intersect_ray_circle(
+                   ray2<real>({-2.0, 2.0}, {scale, 0.0}),
+                   unit_circle, settings).has_intersection(),
+              "scaled 2D ray-circle miss has no contact");
+    }
 
     const auto line = make_line2({-2.0, 0.0}, {2.0, 0.0}, 4.0, 8.0);
     const auto spline_crossing = nurbspath::intersect_spline_circle(
@@ -114,6 +149,26 @@ int main() {
                  "2D point-spline closest point");
     check_near(spline_distance.s, 12.0, 1e-6,
                "2D point-spline native parameter");
+
+    const auto unit_line = make_line2({0.0, 0.0}, {1.0, 0.0}, 10.0, 14.0);
+    for (real x : {0.001, 0.999}) {
+        const auto near_boundary = nurbspath::distance_to_spline(
+            point2<real>{x, 0.0}, unit_line, settings);
+        check_near(near_boundary.distance, 0.0, 0.0,
+                   "2D near-boundary spline contact snaps to zero");
+        check_near(near_boundary.s, 10.0 + 4.0 * x, 1e-8,
+                   "2D boundary interval refinement preserves native s");
+        check_point2(near_boundary.closest_point, {x, 0.0}, 1e-9,
+                     "2D near-boundary spline closest point");
+    }
+    for (real x : {-0.1, 1.1}) {
+        const auto beyond_boundary = nurbspath::distance_to_spline(
+            point2<real>{x, 0.0}, unit_line, settings);
+        check_near(beyond_boundary.distance, 0.1, 1e-12,
+                   "2D spline distance preserves exact endpoint minima");
+        check_near(beyond_boundary.s, x < 0.0 ? 10.0 : 14.0, 0.0,
+                   "2D outside-domain closest parameter is endpoint");
+    }
 
 
     static_assert(has_intersection_query<ray2<real>, circle2<real>>);

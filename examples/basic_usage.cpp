@@ -1,10 +1,12 @@
 #include <nurbspath/config.hpp>
 #include <nurbspath/nurbspath.hpp>
 
+#include <iomanip>
 #include <iostream>
 #include <vector>
 
 int main() {
+    std::cout << std::scientific << std::setprecision(4);
     using real = double;
     using nurbspath::point3;
     using nurbspath::vector3;

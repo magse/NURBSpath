@@ -5,6 +5,7 @@
 #include "nurbspath/point3.hpp"
 #include "nurbspath/serialization.hpp"
 #include "nurbspath/sphere3.hpp"
+#include "nurbspath/tagged_attributes.hpp"
 #include "nurbspath/vector3.hpp"
 
 #include <concepts>
@@ -39,6 +40,30 @@ struct tagged_entity3 {
     entity3_ptr<REAL> entity;
 };
 
+/**
+ * @brief Type-safe owners for geometry and optional presentation records.
+ * @tparam REAL Floating-point scalar type used for numeric record fields.
+ */
+template <std::floating_point REAL>
+using tagged_record_ptr = std::variant<
+    std::shared_ptr<point3<REAL>>,
+    std::shared_ptr<vector3<REAL>>,
+    std::shared_ptr<sphere3<REAL>>,
+    std::shared_ptr<nurbs_spline3<REAL>>,
+    std::shared_ptr<line_color<REAL>>,
+    std::shared_ptr<line_font<REAL>>,
+    std::shared_ptr<text_label<REAL>>>;
+
+/**
+ * @brief Application tag and one geometry or optional presentation record.
+ * @tparam REAL Floating-point scalar type used by the stored record.
+ */
+template <std::floating_point REAL>
+struct tagged_record {
+    std::size_t tag = 0; ///< Application-defined tag associating related rows.
+    tagged_record_ptr<REAL> value; ///< Non-null owner after a successful read.
+};
+
 namespace detail {
 
 /** @cond */
@@ -53,6 +78,16 @@ template <std::floating_point REAL, typename ENTITY>
         decoded->tag, entity3_ptr<REAL>{std::move(decoded->entity)}};
 }
 
+template <std::floating_point REAL, typename ENTITY>
+[[nodiscard]] std::optional<tagged_record<REAL>> wrap_tagged_record(
+    std::optional<tagged_read_result<ENTITY>> decoded) {
+    if (!decoded) {
+        return std::nullopt;
+    }
+    return tagged_record<REAL>{
+        decoded->tag, tagged_record_ptr<REAL>{std::move(decoded->entity)}};
+}
+
 /** @endcond */
 
 } // namespace detail
@@ -61,8 +96,10 @@ template <std::floating_point REAL, typename ENTITY>
  * @brief Read one version-1 tagged row and allocate its concrete 3D entity.
  *
  * The case-sensitive type token dispatches `point3`, `vector3`, `sphere3`, or
- * `spline3`. When a row is present, exactly that physical row is consumed. The
- * complete grammar and recovery rules are documented in `DATA.md`.
+ * `spline3`. Advisory application and diagnostic rows are skipped without
+ * decoding their versions or payloads. The next non-advisory physical row is
+ * consumed and validated. The complete grammar and recovery rules are in
+ * `DATA.md`.
  *
  * @tparam REAL Floating-point scalar type used to decode numeric fields.
  * @param input Source text stream positioned at the start of a row.
@@ -97,6 +134,65 @@ template <std::floating_point REAL>
             detail::decode_tagged_spline3<REAL>(*record, input));
     }
 
+    detail::mark_tagged_read_failure(input);
+    return std::nullopt;
+}
+
+/**
+ * @brief Read one geometry, `linecolor`, `linefont`, or `text` version-1 row.
+ *
+ * This reader adds optional presentation records to the four geometry types
+ * handled by tag_read(). It preserves row order and tags without applying
+ * attributes, changing SVG state, or choosing label placement. Applications
+ * associate presentation records with their tagged line elements. The full
+ * grammar, numeric units, quoting, and recovery rules are in `DATA.md`.
+ * Advisory application and diagnostic rows are skipped without decoding their
+ * versions or payloads, and are not returned in the variant. After those rows,
+ * at most one geometry or presentation row is consumed and validated per call.
+ *
+ * @tparam REAL Floating-point scalar type used to decode numeric fields.
+ * @param input Source stream positioned at the start of a physical row.
+ * @return Preserved tag and variant holding a non-null owner, or nullopt on
+ * EOF/read failure. Invalid values, unknown types/versions, malformed quoting,
+ * or extra fields in a non-advisory row set failbit after consuming that row.
+ * @throws std::bad_alloc If row buffering or allocation fails.
+ * @throws std::ios_base::failure When enabled by the stream exception mask.
+ */
+template <std::floating_point REAL>
+[[nodiscard]] std::optional<tagged_record<REAL>> tag_read_record(
+    std::istream& input) {
+    const auto record = detail::read_tagged_text_record(input);
+    if (!record) {
+        return std::nullopt;
+    }
+    if (record->entity_type == "point3") {
+        return detail::wrap_tagged_record<REAL>(
+            detail::decode_tagged_point3<REAL>(*record, input));
+    }
+    if (record->entity_type == "vector3") {
+        return detail::wrap_tagged_record<REAL>(
+            detail::decode_tagged_vector3<REAL>(*record, input));
+    }
+    if (record->entity_type == "sphere3") {
+        return detail::wrap_tagged_record<REAL>(
+            detail::decode_tagged_sphere3<REAL>(*record, input));
+    }
+    if (record->entity_type == "spline3") {
+        return detail::wrap_tagged_record<REAL>(
+            detail::decode_tagged_spline3<REAL>(*record, input));
+    }
+    if (record->entity_type == "linecolor") {
+        return detail::wrap_tagged_record<REAL>(
+            detail::decode_tagged_line_color<REAL>(*record, input));
+    }
+    if (record->entity_type == "linefont") {
+        return detail::wrap_tagged_record<REAL>(
+            detail::decode_tagged_line_font<REAL>(*record, input));
+    }
+    if (record->entity_type == "text") {
+        return detail::wrap_tagged_record<REAL>(
+            detail::decode_tagged_text_label<REAL>(*record, input));
+    }
     detail::mark_tagged_read_failure(input);
     return std::nullopt;
 }

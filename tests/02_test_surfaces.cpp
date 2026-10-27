@@ -103,6 +103,26 @@ int main() {
               moved_sphere.get_center() == point3<real>{-1.5, -2.5, -3.5} &&
               moved_sphere.get_radius() == 7.0,
           "sphere combined setter rejects invalid radius atomically");
+    for (real nonfinite_radius : {
+             std::numeric_limits<real>::infinity(),
+             std::numeric_limits<real>::quiet_NaN()}) {
+        rejected_sphere_radius = false;
+        try {
+            static_cast<void>(sphere3<real>({0.0, 0.0, 0.0}, nonfinite_radius));
+        } catch (const std::invalid_argument&) {
+            rejected_sphere_radius = true;
+        }
+        check(rejected_sphere_radius,
+              "sphere constructor rejects non-finite radius");
+        rejected_sphere_radius = false;
+        try {
+            moved_sphere.set_radius(nonfinite_radius);
+        } catch (const std::invalid_argument&) {
+            rejected_sphere_radius = true;
+        }
+        check(rejected_sphere_radius && moved_sphere.get_radius() == 7.0,
+              "sphere radius setter rejects non-finite radius atomically");
+    }
 
     const plane3<real> plane(
         {1.0, 2.0, 3.0}, {0.0, 0.0, 2.0}, {1.0, 0.0, 0.0});

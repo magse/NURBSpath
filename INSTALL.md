@@ -34,18 +34,36 @@ mismatch, configure a fresh build directory.
 ### Run the examples
 
 All examples are built by default. Run the 3D and native 2D geometry examples
-with:
+and the tagged-data example with:
 
 ```sh
 ./build/nurbspath_example
 ./build/nurbspath_2d_example
+./build/nurbspath_tagged_example
 ```
+
+The examples print floating-point console output in scientific notation with
+at most four digits after the decimal point. Generated SVG examples use the
+same precision for numeric drawing attributes.
+
+`nurbspath_tagged_example` prints a rounded preview of geometry with optional
+`linecolor`, `linefont`, and quoted `text` rows, together with an
+untagged `application` row and positioned `warning`, `information`, and `error`
+rows. It retains full round-trip precision in its buffered tagged records and
+reads back the eight geometry and presentation rows while skipping these
+advisory records. It demonstrates normalized RGBA color, solid and
+dashed line settings, and escaped labels and diagnostics. See [DATA.md](DATA.md) for the format and
+[README.md](README.md#tagged-3d-persistence-and-optional-presentation-records)
+for API usage. Application identity and diagnostics are output-only and optional
+for consumers to interpret or display. No extra build option or dependency is
+needed for presentation or advisory records.
 
 The SVG example writes `nurbspath_orthographic.svg`,
 `nurbspath_perspective.svg`, and `nurbspath_2d.svg` into its current working
-directory. The first two files contain orthographic and perspective 3D scenes;
-the third contains a native, flat 2D scene. Run it from a temporary output
-directory to keep generated diagnostics outside the repository:
+directory. These rounded previews contain orthographic and perspective 3D
+scenes in the first two files and a native, flat 2D scene in the third. Run it
+from a temporary output directory to keep generated diagnostics outside the
+repository:
 
 ```sh
 mkdir -p /tmp/nurbspath-svg
@@ -65,7 +83,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 | Option | Default | Purpose |
 |---|---:|---|
-| `NURBSPATH_BUILD_EXAMPLES` | `ON` | Build the 2D, 3D, and SVG examples |
+| `NURBSPATH_BUILD_EXAMPLES` | `ON` | Build the 2D, 3D, SVG, and tagged-data examples |
 | `NURBSPATH_BUILD_TESTS` | `ON` | Build the numbered tests and `nurbspath_tests` target |
 | `NURBSPATH_BUILD_DOCUMENTATION` | `OFF` | Add the `nurbspath_docs` and `docs` targets |
 
@@ -127,7 +145,10 @@ cmake --install build-install --prefix /your/prefix
 
 The installation contains:
 
-- public headers under `/your/prefix/include/nurbspath`;
+- public headers under `/your/prefix/include/nurbspath`, including
+  `tagged_attributes.hpp` for line settings and text labels,
+  `tagged_annotations.hpp` for output-only application identity and positioned
+  diagnostics, and `tagged_serialization.hpp` for mixed-record input;
 - CMake package files under the platform's CMake library directory, commonly
   `/your/prefix/lib/cmake/nurbspath`.
 

@@ -2,6 +2,8 @@
 
 #include "test_support.hpp"
 
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 
@@ -55,5 +57,29 @@ int main() {
     check(nurbspath::detail::kind_for_count<double>(0) ==
               nurbspath::intersection_kind::none,
           "implementation intersection helper is in detail namespace");
+    for (real invalid : {0.0, -1.0,
+                         std::numeric_limits<real>::infinity(),
+                         std::numeric_limits<real>::quiet_NaN()}) {
+        nurbspath::numerical_settings<real> invalid_settings;
+        invalid_settings.residual_tolerance = invalid;
+        bool rejected_residual = false;
+        try {
+            invalid_settings.validate();
+        } catch (const std::invalid_argument&) {
+            rejected_residual = true;
+        }
+        check(rejected_residual,
+              "numerical settings require finite positive residual tolerance");
+        invalid_settings = {};
+        invalid_settings.parameter_tolerance = invalid;
+        bool rejected_parameter = false;
+        try {
+            invalid_settings.validate();
+        } catch (const std::invalid_argument&) {
+            rejected_parameter = true;
+        }
+        check(rejected_parameter,
+              "numerical settings require finite positive parameter tolerance");
+    }
     return finish("09_test_float_and_detail");
 }

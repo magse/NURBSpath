@@ -71,13 +71,14 @@ configure_file(
 add_library(nurbspath INTERFACE)
 add_library(nurbspath::nurbspath ALIAS nurbspath)
 
+include(GNUInstallDirs)
 target_compile_features(nurbspath INTERFACE cxx_std_20)
 target_include_directories(
     nurbspath
     INTERFACE
         $<BUILD_INTERFACE:${NURBSPATH_GENERATED_INCLUDE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 option(NURBSPATH_BUILD_EXAMPLES "Build the nurbspath example programs" ON)
@@ -93,6 +94,9 @@ if(NURBSPATH_BUILD_EXAMPLES)
 
     add_executable(nurbspath_svg_example examples/svg_usage.cpp)
     target_link_libraries(nurbspath_svg_example PRIVATE nurbspath::nurbspath)
+
+    add_executable(nurbspath_tagged_example examples/tagged_usage.cpp)
+    target_link_libraries(nurbspath_tagged_example PRIVATE nurbspath::nurbspath)
 endif()
 
 if(NURBSPATH_BUILD_TESTS)
@@ -121,6 +125,8 @@ if(NURBSPATH_BUILD_TESTS)
         tests/20_test_knot_count.cpp
         tests/21_test_arr_splines.cpp
         tests/22_test_spline_parameters.cpp
+        tests/23_test_tagged_attributes.cpp
+        tests/24_test_tagged_annotations.cpp
     )
     set(NURBSPATH_TEST_TARGETS)
     foreach(test_source IN LISTS NURBSPATH_TEST_SOURCES)
@@ -163,7 +169,6 @@ if(NURBSPATH_BUILD_DOCUMENTATION)
     add_custom_target(docs DEPENDS nurbspath_docs)
 endif()
 
-include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 install(TARGETS nurbspath EXPORT nurbspath_targets)

@@ -107,6 +107,7 @@ private:
 template <std::floating_point REAL>
 struct svg_graphics_options2 {
     /// SVG line width in viewBox units, normally equivalent to output pixels.
+    /// Its derived stroke and label sizes must remain finite in REAL.
     REAL line_width = REAL(1.5);
 
     /// Number of solid straight elements used to approximate a NURBS path.
@@ -117,9 +118,10 @@ struct svg_graphics_options2 {
      * @throws std::invalid_argument When line width or segment count is invalid.
      */
     void validate() const {
-        if (!(line_width > REAL(0)) || !std::isfinite(line_width)) {
+        if (!(line_width > REAL(0)) ||
+            !std::isfinite(line_width * REAL(7))) {
             throw std::invalid_argument(
-                "2D SVG line width must be finite and positive");
+                "2D SVG line width and derived sizes must be finite and positive");
         }
         if (spline_segment_count == 0) {
             throw std::invalid_argument(
@@ -305,6 +307,7 @@ private:
 template <std::floating_point REAL>
 struct svg_graphics_options3 {
     /// SVG line width in viewBox units, normally equivalent to output pixels.
+    /// Its derived stroke and label sizes must remain finite in REAL.
     REAL line_width = REAL(1.5);
 
     /// Number of straight elements used to approximate a complete NURBS path.
@@ -325,8 +328,10 @@ struct svg_graphics_options3 {
      * @throws std::invalid_argument When a width, length, or segment count is invalid.
      */
     void validate() const {
-        if (!(line_width > REAL(0)) || !std::isfinite(line_width)) {
-            throw std::invalid_argument("SVG line width must be finite and positive");
+        if (!(line_width > REAL(0)) ||
+            !std::isfinite(line_width * REAL(7))) {
+            throw std::invalid_argument(
+                "SVG line width and derived sizes must be finite and positive");
         }
         if (spline_segment_count == 0) {
             throw std::invalid_argument("SVG spline segment count must be positive");
@@ -470,14 +475,19 @@ public:
 
     /**
      * @brief Add a native 2D circle and center using solid pale-blue lines.
+     *
+     * An outline whose projected radius is nonfinite is omitted; a finite
+     * projected center still receives its center dot.
+     *
      * @param circle Circle in the independent 2D world.
      */
     void add(const circle2<REAL>& circle) {
         const auto center = world_to_screen(circle.center());
-        if (center) {
+        const REAL projected_radius = circle.radius() * scale();
+        if (center && std::isfinite(projected_radius)) {
             elements_ << "<circle class=\"nurbspath_canvas_circle2\" cx=\""
                       << center->x << "\" cy=\"" << center->y
-                      << "\" r=\"" << circle.radius() * scale()
+                      << "\" r=\"" << projected_radius
                       << "\" fill=\"none\" stroke=\"#8fc5e8\" "
                       << "stroke-opacity=\"1\"/>\n";
         }
@@ -629,11 +639,21 @@ private:
     [[nodiscard]] std::optional<std::pair<screen_point, screen_point>>
     projected_infinite_line(const ray2<REAL>& ray) const noexcept {
         const auto first = world_to_screen(ray.origin());
-        const auto second = world_to_screen(ray.origin() + ray.direction());
-        if (!first || !second) {
+        const REAL direction_scale = std::max(
+            std::abs(ray.direction().x), std::abs(ray.direction().y));
+        if (!first || !(direction_scale > REAL(0)) ||
+            !std::isfinite(direction_scale)) {
             return std::nullopt;
         }
-        return clip_infinite_screen_line(*first, *second);
+        // The supporting line is independent of the native parameter scale.
+        // Form its screen direction directly so a short world direction is
+        // not lost when added to the origin or compared with pixel tolerances.
+        const REAL screen_extent = static_cast<REAL>(std::max(
+            view_.image_width(), view_.image_height()));
+        const screen_point second{
+            first->x + ray.direction().x / direction_scale * screen_extent,
+            first->y - ray.direction().y / direction_scale * screen_extent};
+        return clip_infinite_screen_line(*first, second);
     }
 
     [[nodiscard]] std::optional<std::pair<screen_point, screen_point>>
@@ -740,9 +760,14 @@ private:
             return;
         }
         const REAL offset = options_.line_width * REAL(2.5);
+        const REAL label_x = screen_endpoint->x + offset;
+        const REAL label_y = screen_endpoint->y - offset;
+        if (!std::isfinite(label_x) || !std::isfinite(label_y)) {
+            return;
+        }
         elements_ << "<text class=\"" << class_name << "_label\" x=\""
-                  << screen_endpoint->x + offset << "\" y=\""
-                  << screen_endpoint->y - offset << "\" fill=\"" << color
+                  << label_x << "\" y=\""
+                  << label_y << "\" fill=\"" << color
                   << "\" stroke=\"none\" font-family=\"sans-serif\" "
                   << "font-size=\"" << options_.line_width * REAL(7)
                   << "\" font-weight=\"600\" text-anchor=\"middle\" "
@@ -1244,7 +1269,17 @@ private:
         camera_point first{};
         camera_point second{};
         const camera_point origin = world_to_camera(ray.origin());
-        const camera_point direction = world_direction_to_camera(ray.direction());
+        const REAL world_direction_scale = std::max({
+            std::abs(ray.direction().x), std::abs(ray.direction().y),
+            std::abs(ray.direction().z)});
+        if (!(world_direction_scale > REAL(0)) ||
+            !std::isfinite(world_direction_scale)) {
+            return std::nullopt;
+        }
+        const camera_point direction = world_direction_to_camera({
+            ray.direction().x / world_direction_scale,
+            ray.direction().y / world_direction_scale,
+            ray.direction().z / world_direction_scale});
         const REAL direction_scale = std::max({
             std::abs(direction.x), std::abs(direction.y), std::abs(direction.z)});
         const REAL numerical_zero =
@@ -1252,12 +1287,20 @@ private:
             std::max(direction_scale, REAL(1));
 
         if (view_.projection() == svg_projection3::orthographic) {
-            first = origin;
-            second = {
-                origin.x + direction.x,
-                origin.y + direction.y,
-                origin.z + direction.z
-            };
+            const auto screen_origin = project_camera_point(origin);
+            const REAL transverse_scale = std::max(
+                std::abs(direction.x), std::abs(direction.y));
+            if (!screen_origin || !(transverse_scale > REAL(0))) {
+                return std::nullopt;
+            }
+            // Use a view-sized screen direction independently of world units
+            // and the ray's native parameterization.
+            const REAL screen_extent = static_cast<REAL>(std::max(
+                view_.image_width(), view_.image_height()));
+            const screen_point screen_second{
+                screen_origin->x + direction.x / transverse_scale * screen_extent,
+                screen_origin->y - direction.y / transverse_scale * screen_extent};
+            return clip_infinite_screen_line(*screen_origin, screen_second);
         } else if (std::abs(direction.z) > numerical_zero) {
             // Select two positive-depth points on the infinite supporting line.
             // Their projected line is then extended exactly to the SVG bounds.
@@ -1438,9 +1481,14 @@ private:
         }
         const REAL label_offset = options_.line_width * REAL(2.5);
         const REAL font_size = options_.line_width * REAL(7);
+        const REAL label_x = projected_endpoint->x + label_offset;
+        const REAL label_y = projected_endpoint->y - label_offset;
+        if (!std::isfinite(label_x) || !std::isfinite(label_y)) {
+            return;
+        }
         elements_ << "<text class=\"" << class_name << "_label\" x=\""
-                  << projected_endpoint->x + label_offset << "\" y=\""
-                  << projected_endpoint->y - label_offset
+                  << label_x << "\" y=\""
+                  << label_y
                   << "\" fill=\"" << color
                   << "\" stroke=\"none\" font-family=\"sans-serif\" "
                   << "font-size=\"" << font_size

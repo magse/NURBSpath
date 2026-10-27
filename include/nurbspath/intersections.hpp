@@ -14,6 +14,7 @@
 #include <cmath>
 #include <concepts>
 #include <cstddef>
+#include <limits>
 #include <vector>
 
 namespace nurbspath {
@@ -120,6 +121,25 @@ template <std::floating_point REAL>
     return count == 0 ? intersection_kind::none : intersection_kind::discrete;
 }
 
+template <std::floating_point REAL>
+[[nodiscard]] numerical_settings<REAL> ray_world_distance_settings(
+    const numerical_settings<REAL>& settings,
+    REAL direction_length) {
+    numerical_settings<REAL> result = settings;
+    // Refinement and duplicate suppression must distinguish contacts in world
+    // space even when a large direction makes their native s values tiny.
+    result.parameter_tolerance = std::min(
+        settings.parameter_tolerance * direction_length,
+        settings.residual_tolerance);
+    if (result.parameter_tolerance == REAL(0)) {
+        result.parameter_tolerance = std::numeric_limits<REAL>::denorm_min();
+        if (result.parameter_tolerance == REAL(0)) {
+            result.parameter_tolerance = std::numeric_limits<REAL>::min();
+        }
+    }
+    return result;
+}
+
 template <std::floating_point REAL, typename SPLINE>
 void suppress_closed_seam_duplicate(
     std::vector<REAL>& roots,
@@ -141,7 +161,9 @@ void suppress_closed_seam_duplicate(
  * @brief Numerically intersect a forward 2D ray with a 2D circle.
  *
  * All residual evaluation and root refinement occurs in the independent 2D
- * world. Root coverage depends on `settings.sample_count`.
+ * world. Refinement uses world-distance parameters internally and returns
+ * native ray `s`; positive direction scaling preserves contact positions.
+ * Root coverage depends on `settings.sample_count`.
  *
  * @tparam REAL Floating-point scalar type.
  * @param ray Forward 2D ray queried for `s >= 0`.
@@ -156,25 +178,26 @@ template <std::floating_point REAL>
     const numerical_settings<REAL>& settings = {}) {
     settings.validate();
     const REAL direction_length = ray.direction().length();
+    const vector2<REAL> unit_direction = ray.direction() / direction_length;
     const REAL world_bound = distance(ray.origin(), circle.center()) +
                              circle.radius() + settings.residual_tolerance;
-    const REAL s_upper = std::max(
-        world_bound / direction_length,
-        settings.parameter_tolerance * REAL(2));
-    const auto residual = [&](REAL s) {
-        return distance(ray.point_at(s), circle.center()) - circle.radius();
+    const auto residual = [&](REAL world_distance) {
+        return distance(ray.origin() + world_distance * unit_direction,
+                        circle.center()) - circle.radius();
     };
 
     const std::vector<REAL> roots = find_roots<REAL>(
-        residual, REAL(0), s_upper, settings);
+        residual, REAL(0), world_bound,
+        detail::ray_world_distance_settings(settings, direction_length));
     intersection_result2<REAL> result;
-    for (REAL s : roots) {
+    for (REAL world_distance : roots) {
+        const REAL s = world_distance / direction_length;
         const point2<REAL> point = ray.point_at(s);
         const REAL angular_tolerance = std::min(
             settings.residual_tolerance, circle.radius() * REAL(0.5));
         result.points.push_back(
             {point, s, circle.parameter_of(point, angular_tolerance),
-             std::abs(residual(s))});
+             std::abs(distance(point, circle.center()) - circle.radius())});
     }
     result.kind = detail::kind_for_count<REAL>(result.points.size());
     return result;
@@ -225,6 +248,11 @@ template <std::floating_point REAL>
 
 /**
  * @brief Numerically intersect a forward ray with a sphere.
+ *
+ * Refinement uses world-distance parameters internally and returns native ray
+ * `s`; positive direction scaling preserves contact positions. Root coverage
+ * depends on `settings.sample_count`.
+ *
  * @tparam REAL Floating-point scalar type.
  * @param ray Forward ray queried for `s >= 0`.
  * @param sphere Target sphere.
@@ -238,25 +266,28 @@ template <std::floating_point REAL>
     const numerical_settings<REAL>& settings = {}) {
     settings.validate();
     const REAL direction_length = ray.direction().length();
+    const vector3<REAL> unit_direction = ray.direction() / direction_length;
     const REAL world_bound = distance(ray.origin(), sphere.center()) +
                              sphere.radius() + settings.residual_tolerance;
-    const REAL s_upper = std::max(
-        world_bound / direction_length,
-        settings.parameter_tolerance * REAL(2));
 
-    const auto residual = [&](REAL s) {
-        return distance(ray.point_at(s), sphere.center()) - sphere.radius();
+    const auto residual = [&](REAL world_distance) {
+        return distance(ray.origin() + world_distance * unit_direction,
+                        sphere.center()) - sphere.radius();
     };
     const std::vector<REAL> roots = find_roots<REAL>(
-        residual, REAL(0), s_upper, settings);
+        residual, REAL(0), world_bound,
+        detail::ray_world_distance_settings(settings, direction_length));
 
     intersection_result3<REAL> result;
-    for (REAL s : roots) {
+    for (REAL world_distance : roots) {
+        const REAL s = world_distance / direction_length;
         const point3<REAL> point = ray.point_at(s);
         const REAL angular_tolerance = std::min(
             settings.residual_tolerance, sphere.radius() * REAL(0.5));
         const auto [u, v] = sphere.parameters_of(point, angular_tolerance);
-        result.points.push_back({point, s, u, v, std::abs(residual(s))});
+        result.points.push_back(
+            {point, s, u, v,
+             std::abs(distance(point, sphere.center()) - sphere.radius())});
     }
     result.kind = detail::kind_for_count<REAL>(result.points.size());
     return result;
@@ -264,6 +295,12 @@ template <std::floating_point REAL>
 
 /**
  * @brief Numerically intersect a forward ray with an infinite plane.
+ *
+ * The ray direction retains its native scale. Parallel classification uses
+ * a zero normal component, and endpoint contact is checked in world-distance
+ * units. Refinement tightens the parameter tolerance when necessary to meet
+ * the requested world-distance residual for a large direction magnitude.
+ *
  * @tparam REAL Floating-point scalar type.
  * @param ray Forward ray queried for `s >= 0`.
  * @param plane Target infinite plane.
@@ -279,7 +316,7 @@ template <std::floating_point REAL>
     const REAL origin_residual = plane.signed_distance_to(ray.origin());
     const REAL rate = ray.direction().dot(plane.normal());
 
-    if (std::abs(rate) <= settings.residual_tolerance) {
+    if (rate == REAL(0)) {
         return {
             std::abs(origin_residual) <= settings.residual_tolerance
                 ? intersection_kind::coincident
@@ -287,24 +324,33 @@ template <std::floating_point REAL>
             {}};
     }
 
-    // The quotient is used only to establish a finite bracket. The contact is
-    // still found by the shared numerical root solver and verified by residual.
-    const REAL estimated_s = -origin_residual / rate;
-    if (estimated_s < -settings.parameter_tolerance) {
-        return {};
-    }
-    if (std::abs(estimated_s) <= settings.parameter_tolerance) {
+    if (std::abs(origin_residual) <= settings.residual_tolerance) {
         const auto [u, v] = plane.parameters_of(ray.origin());
         return {intersection_kind::discrete,
                 {{ray.origin(), REAL(0), u, v, std::abs(origin_residual)}}};
     }
 
-    const REAL s_upper = estimated_s * REAL(2) + settings.parameter_tolerance;
+    // The quotient is used only to establish a finite bracket. The contact is
+    // still found by the shared numerical root solver. Native parameter scale
+    // cannot determine whether a ray is parallel or already touches the plane.
+    const REAL estimated_s = -origin_residual / rate;
+    if (estimated_s < REAL(0)) {
+        return {};
+    }
+    const REAL s_upper = estimated_s * REAL(2);
     const auto residual = [&](REAL s) {
         return plane.signed_distance_to(ray.point_at(s));
     };
+
+    numerical_settings<REAL> refinement_settings = settings;
+    const REAL residual_parameter_tolerance =
+        settings.residual_tolerance / std::abs(rate);
+    if (residual_parameter_tolerance > REAL(0)) {
+        refinement_settings.parameter_tolerance = std::min(
+            settings.parameter_tolerance, residual_parameter_tolerance);
+    }
     const std::vector<REAL> roots = find_roots<REAL>(
-        residual, REAL(0), s_upper, settings);
+        residual, REAL(0), s_upper, refinement_settings);
 
     intersection_result3<REAL> result;
     for (REAL s : roots) {

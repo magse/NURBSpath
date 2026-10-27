@@ -29,6 +29,25 @@ int main() {
         point3<real>{0.0, 3.0, 0.0}, line, settings);
     check_near(spline_result.distance, 3.0, 1e-8, "point-spline distance");
     check_near(spline_result.s, 0.5, 1e-7, "point-spline closest s");
+    const auto unit_line = make_line({0.0, 0.0, 0.0}, {1.0, 0.0, 0.0});
+    for (real s : {0.001, 0.999}) {
+        const auto near_boundary = nurbspath::distance_to_spline(
+            point3<real>{s, 0.0, 0.0}, unit_line, settings);
+        check_near(near_boundary.distance, 0.0, 0.0,
+                   "point-spline near-boundary contact snaps to zero");
+        check_near(near_boundary.s, s, 1e-9,
+                   "point-spline refines the first and final sample intervals");
+        check_point(near_boundary.closest_point, {s, 0.0, 0.0}, 1e-9,
+                    "point-spline near-boundary closest world point");
+    }
+    for (real x : {-0.1, 1.1}) {
+        const auto beyond_boundary = nurbspath::distance_to_spline(
+            point3<real>{x, 0.0, 0.0}, unit_line, settings);
+        check_near(beyond_boundary.distance, 0.1, 1e-12,
+                   "point-spline preserves exact endpoint minima");
+        check_near(beyond_boundary.s, x < 0.0 ? 0.0 : 1.0, 0.0,
+                   "point-spline outside-domain closest parameter is endpoint");
+    }
     check_near(nurbspath::distance(
                    point3<real>{0.0, 0.0, 5e-11}, plane, 1e-9),
                0.0, 0.0, "distance tolerance snaps to zero");

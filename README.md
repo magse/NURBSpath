@@ -22,7 +22,8 @@ floating-point parameter is named `REAL`, so the same API works with `float`,
 
 See [INSTALL.md](INSTALL.md) for requirements, build and test commands,
 installation, and CMake package consumption.
-See [DATA.md](DATA.md) for the versioned, tagged 3D text format and its typed
+See [DATA.md](DATA.md) for the versioned, tagged 3D text format, optional line
+styles and text labels, advisory application and diagnostic output, and typed
 and heterogeneous reading APIs.
 
 ## Features
@@ -58,7 +59,9 @@ and heterogeneous reading APIs.
 - Self-contained SVG diagnostics with orthographic and perspective cameras,
   projected geometry markers, and configurable curve tessellation.
 - Versioned, single-row tagged text persistence for 3D points, vectors,
-  spheres, and NURBS splines, including type-safe heterogeneous input.
+  spheres, and NURBS splines, with optional line color, line font, and text
+  records and type-safe heterogeneous input, plus optional application metadata
+  and positioned warning, information, and error messages.
 - No third-party runtime or build dependency.
 
 ## Coordinate and parameter conventions
@@ -817,7 +820,11 @@ Each `intersection2` instead contains a `point2`, ray/spline `s`, circle angle
 `u`, and a residual evaluated entirely in the 2D world. For a closed spline,
 a contact shared by `s_min()` and `s_max()` is reported once at `s_min()`.
 
-Configure numerical behavior through `numerical_settings<REAL>`:
+Configure numerical behavior through `numerical_settings<REAL>`.
+
+Both tolerances must be finite and strictly positive, `max_iterations` must be
+positive, and `sample_count` must be at least two. Invalid settings throw
+`std::invalid_argument`. For example:
 
 ```cpp
 nurbspath::numerical_settings<double> settings;
@@ -831,9 +838,16 @@ const auto contacts = nurbspath::intersect(path, plane, settings);
 
 Intersection searches sample a finite parameter interval, refine sign changes
 with bisection, and minimize local absolute residuals to retain tangent contacts.
-Ray/sphere searches derive a safe forward bound from the sphere location and
-radius. Ray/plane searches classify parallel and coplanar rays before numerical
-refinement. Spline searches use the complete active knot domain.
+Ray/sphere and ray/circle searches derive a forward world-distance bound from
+the center and radius. They refine in world distance along a temporary unit
+direction, then return each contact's native ray `s`; the ray itself retains
+its supplied direction. The native parameter tolerance is converted to world
+distance and capped by the residual tolerance for refinement and duplicate
+suppression, so a large direction magnitude does not merge distinct crossings.
+Ray/plane searches classify parallel rays by a zero normal direction component
+and test origin contact in world-distance units. Their parameter refinement
+tolerance is tightened when needed to meet the requested world residual.
+Spline searches use the complete active knot domain.
 
 `sample_count` is the resolution contract: it must be high enough to expose the
 smallest oscillation or contact basin in a curve. Increase it for high-degree,
@@ -861,8 +875,11 @@ Scalar overloads named `distance` return only the distance. A measured distance
 less than or equal to the selected residual tolerance is returned as zero.
 Plane distance uses orthogonal projection and sphere distance uses radial
 projection. Spline distance samples the full active domain, identifies every
-sampled local basin, and refines each with golden-section minimization; its
-global guarantee is therefore relative to `sample_count`.
+sampled local basin, and refines each with golden-section minimization. This
+includes the first or last sample interval when its domain endpoint is a
+sampled minimum, so an interior closest point near an endpoint can still be
+refined. Coverage depends on `sample_count`; an arbitrarily narrow unsampled
+minimum can be missed.
 The circle and 2D spline overloads perform the analogous calculations using
 only `point2` and `vector2` arithmetic. A projection plane is neither accepted
 nor consulted by any 2D distance or intersection function. Point-to-spline
@@ -912,8 +929,8 @@ For example:
 ```cpp
 nurbspath::point3<double> point;
 point.csv_read(input, nurbspath::text_format::tsv);
-point.csv_write(output, nurbspath::text_format::csv, 8);
-// 0.00000000e+00,0.00000000e+00,0.00000000e+00
+point.csv_write(output, nurbspath::text_format::csv, 4);
+// 0.0000e+00,0.0000e+00,0.0000e+00
 ```
 
 Their `write(output)` and `read(input)` members provide compact binary I/O.
@@ -923,16 +940,17 @@ portable between different scalar types, floating-point representations, or
 byte orders. Text and binary reads leave the existing object unchanged unless
 the complete record is available.
 
-### Tagged 3D persistence
+### Tagged 3D persistence and optional presentation records
 
 `point3`, `vector3`, `sphere3`, and `nurbs_spline3` each provide
-`tag_write(tag, output)` and a static `tag_read(input)`. Every call writes one
+`tag_write(tag, output)` and a static `tag_read(input)`. Every write produces one
 versioned text row whose floating-point fields use round-trip scientific
-notation:
+notation. The following preview is rounded to four digits after the decimal
+point; the writer retains full round-trip precision:
 
 ```text
-42 point3 v1 1.0000000000000000e+00 2.0000000000000000e+00 3.0000000000000000e+00
-42 sphere3 v1 0.0000000000000000e+00 0.0000000000000000e+00 0.0000000000000000e+00 2.5000000000000000e+00
+42 point3 v1 1.0000e+00 2.0000e+00 3.0000e+00
+42 sphere3 v1 0.0000e+00 0.0000e+00 0.0000e+00 2.5000e+00
 ```
 
 Tags are application data rather than unique keys. Multiple entity rows may
@@ -951,9 +969,116 @@ variant of shared pointers to the four supported concrete types. The on-disk
 token for `nurbs_spline3` is the shorter stable name `spline3`.
 Array-backed splines have no tagged record type; convert a
 `nurbs_arr_spline3` explicitly with `to_nurbs_spline()` before writing.
-Unknown, malformed, invalid, or surplus fields set `failbit`, and one complete
-physical row is consumed per call. See [DATA.md](DATA.md) for the exact `v1`
-grammar, spline field order, failure behavior, and portability rules.
+
+Optional `line_color<REAL>`, `line_font<REAL>`, and `text_label<REAL>` records
+from `tagged_attributes.hpp` provide the same `tag_write` and typed static
+`tag_read` interface. Their public aggregate fields and defaults are:
+
+| Type | Fields and defaults | Valid values |
+|---|---|---|
+| `line_color<REAL>` | `red=0`, `green=0`, `blue=0`, `alpha=1` | Finite normalized channels in `[0, 1]`; alpha is opacity |
+| `line_font<REAL>` | `width=1`, `on=0`, `off=0` | Finite positive width; `(on, off)` is `(0, 0)` for solid or both finite positive for dashes |
+| `text_label<REAL>` | `size=12`, `value=""` | Finite positive size; quoted text with supported escapes |
+
+The corresponding row grammars are:
+
+```text
+<tag> linecolor v1 <red> <green> <blue> <alpha>
+<tag> linefont v1 <width> <on> <off>
+<tag> text v1 <size> "text"
+```
+
+Use a shared tag to associate optional presentation records with a 1D curve:
+
+```cpp
+const nurbspath::nurbs_spline3<double> path{
+    nurbspath::point3<double>{0.0, 0.0, 0.0},
+    nurbspath::point3<double>{2.0, 1.0, 0.0}, 2, 1};
+path.tag_write(42, output);
+nurbspath::line_color<double>{0.2, 0.4, 0.8, 0.75}.tag_write(42, output);
+nurbspath::line_font<double>{1.5, 4.0, 2.0}.tag_write(42, output);
+nurbspath::text_label<double>{12.0, "Path \"A\"\nnext pass"}
+    .tag_write(42, output);
+```
+
+Widths, dash-on and dash-off lengths, and text sizes use display units chosen
+by the consuming application. Alpha `0` is transparent and `1` is opaque.
+Text escapes backslashes, double quotes, newlines, carriage returns, and tabs,
+so even a multiline label
+occupies one physical record row. Other ASCII control bytes are rejected;
+bytes at least 128 are preserved without UTF-8 validation. Invalid values
+throw `std::invalid_argument` before writing. Every record is independent:
+the consumer chooses tag grouping, omitted-style defaults, and label placement.
+Reading or writing these records does not change geometry or SVG rendering.
+
+Optional output-only annotations from `tagged_annotations.hpp` add application
+identity and positioned diagnostic messages:
+
+```text
+application v1 <name> <version>
+<tag> warning v1 <x> <y> <z> <size> "text"
+<tag> information v1 <x> <y> <z> <size> "text"
+<tag> error v1 <x> <y> <z> <size> "text"
+```
+
+`application_info` has public `name` and `version` strings and a `write(output)`
+member. Both strings must be nonempty unquoted tokens, with no ASCII whitespace
+or control bytes; bytes at least 128 are preserved without UTF-8 validation.
+The application row has no tag and may appear anywhere, typically first.
+`diagnostic_message3<REAL>` has public `level`, `position`, `size`, and `value`
+fields. The default level is `diagnostic_level::information`, the position is
+the 3D world origin, the size is 12, and the text is empty. Positions must be
+finite, sizes must be finite and strictly positive in consumer-selected display
+units, and messages use the same quoted-text rules as `text_label`.
+
+```cpp
+nurbspath::application_info{"path_exporter", "1.0"}.write(output);
+nurbspath::diagnostic_message3<double>{
+    nurbspath::diagnostic_level::warning, {1.0, 2.0, 3.0},
+    12.0, "Small clearance"}.tag_write(42, output);
+nurbspath::diagnostic_message3<double>{
+    nurbspath::diagnostic_level::information, {2.0, 1.0, 0.0},
+    10.0, "Path complete"}.tag_write(42, output);
+nurbspath::diagnostic_message3<double>{
+    nurbspath::diagnostic_level::error, {3.0, 0.0, 1.0},
+    14.0, "No intersection"}.tag_write(43, output);
+```
+
+These advisory rows are optional for every reader to interpret or display.
+The built-in readers skip them wherever they occur, without validating their
+payload or version. Tagged diagnostic rows still require a valid unsigned tag;
+application rows have no tag. The output-only types have no typed readers and
+do not add alternatives to either input variant. Consumers choose whether to display
+the diagnostic text at its 3D position; it does not change geometry or SVG
+rendering.
+
+For input containing both geometry and presentation rows, use
+`nurbspath::tag_read_record<REAL>(input)`. It returns
+`std::optional<tagged_record<REAL>>`; the `value` member is a
+`tagged_record_ptr<REAL>` variant of shared pointers to all seven record types:
+
+```cpp
+while (auto record = nurbspath::tag_read_record<double>(input)) {
+    std::visit([tag = record->tag](const auto& value) {
+        // Collect *value under tag; apply presentation policy in the consumer.
+        (void)tag;
+        (void)value;
+    }, record->value);
+}
+```
+
+The existing `tag_read`, `tagged_entity3`, and `entity3_ptr` APIs continue to
+accept only the four geometry types; they reject `linecolor`, `linefont`, and
+`text` rows. Each reader first skips advisory application and diagnostic rows,
+then consumes at most one geometry or presentation row per call. It sets
+`failbit` for unknown, malformed, invalid, or surplus fields in that row.
+See [DATA.md](DATA.md) for the exact `v1` grammar, escaping, spline field order,
+failure behavior, and portability rules. The runnable
+`examples/tagged_usage.cpp` writes application identity, all three diagnostic
+levels, styled curve and point records, and reads the eight geometry and
+presentation rows while skipping the advisory output. Its console preview
+uses scientific notation with four digits after the decimal point; it reads
+back the full-precision buffered records.
 
 `nurbs_spline2<REAL>` exposes the same rational definition, native domain,
 analytic derivatives, tangent, arc-length approximation, global
@@ -1000,7 +1125,8 @@ accessors remain available, and direction setters preserve the native scale.
 `sphere3<REAL>` provides `get_center()`, `get_radius()`,
 `set_center()`, `set_radius()`, `set_center_and_radius()`, `point_at(u, v)`,
 `normal_at`, and `parameters_of`; the legacy `center()` and `radius()` accessors
-remain available. Center setters accept either a 3D point or vector, and the
+remain available. Construction and radius changes require a finite, strictly
+positive radius. Center setters accept either a 3D point or vector, and the
 combined setter validates the radius before changing either value. Assigning a
 `vector3<REAL>` moves the center to the vector's origin-anchored head while
 preserving its radius. `plane3<REAL>` provides `get_origin()`, `get_normal()`,
@@ -1130,7 +1256,9 @@ fallback, where that macro is zero.
 | `nurbspath/nurbs_arr_spline3.hpp` | Array-backed 3D rational spline |
 | `nurbspath/sphere3.hpp` | Parameterized sphere |
 | `nurbspath/serialization.hpp` | Coordinate and tagged-record I/O support |
-| `nurbspath/tagged_serialization.hpp` | Type-safe general tagged 3D reader |
+| `nurbspath/tagged_attributes.hpp` | Optional tagged line color, line font, and text records |
+| `nurbspath/tagged_annotations.hpp` | Output-only application identity and positioned diagnostic messages |
+| `nurbspath/tagged_serialization.hpp` | Type-safe tagged 3D and mixed presentation-record readers |
 | `nurbspath/plane3.hpp` | Parameterized infinite plane |
 | `nurbspath/projection.hpp` | Explicit plane-based 2D-to-3D entity projection |
 | `nurbspath/creators.hpp` | `std::shared_ptr` factories for all geometry entities |
@@ -1143,6 +1271,13 @@ fallback, where that macro is zero.
 
 `examples/basic_usage.cpp` and `examples/basic_usage_2d.cpp` are runnable 3D
 and native 2D geometry examples. `examples/svg_usage.cpp` writes orthographic
-and perspective 3D scenes plus a native 2D scene. Numbered files under `tests/`
+and perspective 3D scenes plus a native 2D scene. `examples/tagged_usage.cpp`
+writes tagged geometry, optional line styles, escaped text, application identity,
+and positioned diagnostics, then reads the geometry and presentation records
+while skipping the advisory rows. Example console output and numeric drawing
+attributes in the generated SVG previews use scientific notation with at most
+four digits after the decimal point. Tagged serialization retains its full
+round-trip precision internally. The shared `examples/output_format.hpp`
+helper formats these previews. Numbered files under `tests/`
 provide focused, dependency-free CTest programs. Doxygen HTML can be built
 through the optional `docs` target described in [INSTALL.md](INSTALL.md).

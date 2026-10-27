@@ -692,10 +692,10 @@ public:
     /**
      * @brief Read and allocate one version-1 tagged `spline3` text record.
      *
-     * When a row is present, exactly that physical row is consumed. Its type
-     * token must be `spline3`, and its complete definition is validated by the
-     * spline constructor. Malformed data and type mismatches consume the row
-     * and set `failbit`.
+     * Advisory application and diagnostic rows are skipped without decoding.
+     * The next record must have type `spline3`, and its complete definition is
+     * validated by the spline constructor. Malformed data and type mismatches
+     * consume that row and set `failbit`.
      *
      * @param input Source text stream positioned at the start of a row.
      * @return Tag and non-null shared spline after success, or `std::nullopt`

@@ -31,8 +31,8 @@ public:
     /**
      * @brief Construct a sphere.
      * @param center_value World-space center.
-     * @param radius_value Positive radius in world units.
-     * @throws std::invalid_argument When radius is not positive.
+     * @param radius_value Finite positive radius in world units.
+     * @throws std::invalid_argument When radius is not finite and positive.
      */
     sphere3(const point3<REAL>& center_value, REAL radius_value)
         : center_(center_value), radius_(radius_value) {
@@ -79,8 +79,8 @@ public:
 
     /**
      * @brief Replace the radius while preserving the center.
-     * @param radius_value New positive radius in world units.
-     * @throws std::invalid_argument When radius is not positive.
+     * @param radius_value New finite positive radius in world units.
+     * @throws std::invalid_argument When radius is not finite and positive.
      */
     void set_radius(REAL radius_value) {
         validate_radius(radius_value);
@@ -90,9 +90,9 @@ public:
     /**
      * @brief Atomically replace the center and radius.
      * @param center_value New world-space center.
-     * @param radius_value New positive radius in world units.
-     * @throws std::invalid_argument When radius is not positive. The sphere is
-     * unchanged when validation fails.
+     * @param radius_value New finite positive radius in world units.
+     * @throws std::invalid_argument When radius is not finite and positive.
+     * The sphere is unchanged when validation fails.
      */
     void set_center_and_radius(
         const point3<REAL>& center_value,
@@ -106,9 +106,9 @@ public:
      * @brief Atomically replace the center from vector components and the radius.
      * @tparam VECTOR Exact `vector3<REAL>` source type.
      * @param center_value Vector whose components become the center coordinates.
-     * @param radius_value New positive radius in world units.
-     * @throws std::invalid_argument When radius is not positive. The sphere is
-     * unchanged when validation fails.
+     * @param radius_value New finite positive radius in world units.
+     * @throws std::invalid_argument When radius is not finite and positive.
+     * The sphere is unchanged when validation fails.
      */
     template <typename VECTOR>
         requires std::same_as<VECTOR, vector3<REAL>>
@@ -163,9 +163,9 @@ public:
     /**
      * @brief Read and allocate one version-1 tagged `sphere3` text record.
      *
-     * When a row is present, exactly that physical row is consumed. Its type
-     * token must be `sphere3`; malformed data and type mismatches consume the
-     * row and set `failbit`.
+     * Advisory application and diagnostic rows are skipped without decoding.
+     * The next record must have type `sphere3`; malformed data and type
+     * mismatches consume that row and set `failbit`.
      *
      * @param input Source text stream positioned at the start of a row.
      * @return Tag and non-null shared sphere after success, or `std::nullopt`
@@ -233,8 +233,8 @@ public:
 
 private:
     static void validate_radius(REAL radius_value) {
-        if (!(radius_value > REAL(0))) {
-            throw std::invalid_argument("sphere3 radius must be positive");
+        if (!(radius_value > REAL(0)) || !std::isfinite(radius_value)) {
+            throw std::invalid_argument("sphere3 radius must be finite and positive");
         }
     }
 

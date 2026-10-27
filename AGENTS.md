@@ -179,19 +179,63 @@ Tests should check both projections, finite output coordinates, requested
 tessellation counts, and invalid camera settings. The generated SVG must remain
 self-contained and dependency-free.
 
+## Tagged text persistence
+
+Keep optional `linecolor`, `linefont`, and `text` version-1 records in
+`include/nurbspath/tagged_attributes.hpp` and expose them from the umbrella
+header. These records are independent metadata: tag association, omitted-style
+defaults, and label placement belong to the consumer. They do not change
+geometry or establish SVG drawing state. Preserve the four geometry-only
+alternatives in `entity3_ptr`, `tagged_entity3`, and `tag_read`; use
+`tagged_record_ptr`, `tagged_record`, and `tag_read_record` for streams mixing
+geometry and presentation records.
+
+Validate finite normalized RGBA channels in `[0, 1]`, strictly positive finite
+line width and text size, and finite dash lengths that are either both zero
+(solid) or both positive (dashed). Width, dash lengths, and text size use
+consumer-selected display units. Text is quoted, with `\\`, `\"`, `\n`,
+`\r`, and `\t` escapes; reject other ASCII control bytes and preserve bytes
+at least 128 without UTF-8 validation. Keep one physical row per record and
+round-trip scientific numeric output.
+
+Keep output-only `application_info`, `diagnostic_level`, and
+`diagnostic_message3<REAL>` in `include/nurbspath/tagged_annotations.hpp` and
+expose them from the umbrella header. Application output is untagged:
+`application v1 <name> <version>`. Name and version must be nonempty unquoted
+tokens, rejecting bytes at most 32 and byte 127 while preserving bytes at least
+128. Diagnostic output is `<tag> warning|information|error v1 <x> <y> <z>
+<size> "text"` on one physical row. Validate finite 3D world positions, finite
+strictly positive size in consumer-selected display units, valid diagnostic
+levels, and the existing quoted-text rules. The default level is information,
+the position is the 3D origin, size is 12, and text is empty. Readers need not
+interpret or display these advisory records; they do not change geometry or SVG
+state. Do not add static readers or variant alternatives for them.
+
+Typed, geometry-only, and mixed readers skip leading or interleaved advisory
+rows without validating their version or payload. Recognize `application` as
+the first token, or a valid unsigned `std::size_t` tag followed by `warning`,
+`information`, or `error`. Malformed or out-of-range diagnostic tags still fail.
+After skipping such rows, consume at most one required record, preserving its
+strict validation, complete-row isolation, and failbit behavior. EOF after only
+advisory rows follows normal getline EOF semantics. Cover valid, invalid,
+escaped, mixed, and advisory-skipping cases in tests and keep the runnable
+tagged-data example and all format documentation current.
+
 ## Repository map
 
 - `CMakeLists.txt`: build, test, documentation, install, and package export
 - `include/nurbspath/`: public header-only implementation
-- `tests/01_test_*.cpp` through `tests/22_test_*.cpp`: focused numbered tests
+- `tests/01_test_*.cpp` through `tests/24_test_*.cpp`: focused numbered tests
 - `tests/test_support.hpp`: shared dependency-free test helpers
 - `examples/basic_usage.cpp`: minimal runnable 3D integration example
 - `examples/basic_usage_2d.cpp`: minimal runnable native 2D example
 - `examples/svg_usage.cpp`: orthographic and perspective SVG example
+- `examples/tagged_usage.cpp`: optional line settings, text, advisory output,
+  and mixed tagged input
 - `cmake/config.hpp.in`: CMake-refreshed version/Git metadata header
 - `cmake/nurbspath-config.cmake.in`: installed package configuration
 - `README.md`: API, coordinate, and numerical behavior
-- `DATA.md`: versioned tagged-text storage format for 3D entities
+- `DATA.md`: versioned format for 3D geometry, presentation, and advisory records
 - `INSTALL.md`: build, install, and consumption instructions
 - `.gitignore`: generated build, release, cache, and platform metadata rules
 
@@ -201,7 +245,11 @@ Keep `README.md` focused on library behavior and public API usage. Keep
 `INSTALL.md` focused on requirements, CMake workflows, installation, and
 consumption. Ensure commands are runnable from the stated directory, examples
 use current public names, relative links resolve, and version claims match
-`config.hpp`.
+`config.hpp`. Keep floating-point example output, generated SVG drawing
+attributes, and documentation previews in scientific notation with at most
+four digits after the decimal point.
+Clearly label rounded tagged-data previews; preserve full round-trip precision
+in the canonical tagged writers and data used for round-trip demonstrations.
 
 When changing public API documentation or CMake documentation settings, run an
 opt-in documentation build and keep it warning-free:

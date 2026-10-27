@@ -1,6 +1,8 @@
 #include <nurbspath/config.hpp>
 #include <nurbspath/nurbspath.hpp>
 
+#include "output_format.hpp"
+
 #include <fstream>
 #include <iostream>
 #include <numbers>
@@ -56,7 +58,7 @@ void write_scene(
     if (!output) {
         throw std::runtime_error("could not open SVG output file: " + file_name);
     }
-    document.write(output);
+    nurbspath_examples::write_svg_preview(output, document.svg());
 }
 
 void write_flat_scene(
@@ -79,7 +81,7 @@ void write_flat_scene(
     if (!output) {
         throw std::runtime_error("could not open SVG output file: " + file_name);
     }
-    canvas.write(output);
+    nurbspath_examples::write_svg_preview(output, canvas.svg());
 }
 
 } // namespace

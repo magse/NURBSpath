@@ -187,31 +187,45 @@ inline void mark_tagged_read_failure(std::istream& input) {
 [[nodiscard]] inline std::optional<tagged_text_record> read_tagged_text_record(
     std::istream& input) {
     std::string row;
-    if (!std::getline(input, row)) {
-        return std::nullopt;
-    }
+    while (std::getline(input, row)) {
+        std::istringstream row_input(row);
+        row_input.imbue(std::locale::classic());
+        std::string tag_token;
+        if (!(row_input >> tag_token)) {
+            mark_tagged_read_failure(input);
+            return std::nullopt;
+        }
+        // Application identification is an untagged advisory row. Readers
+        // need not understand its version or payload to consume geometry.
+        if (tag_token == "application") {
+            continue;
+        }
 
-    std::istringstream row_input(row);
-    row_input.imbue(std::locale::classic());
-    std::string tag_token;
-    std::string entity_type;
-    std::string version_token;
-    if (!(row_input >> tag_token >> entity_type >> version_token) ||
-        version_token != "v1") {
-        mark_tagged_read_failure(input);
-        return std::nullopt;
-    }
+        std::string entity_type;
+        std::size_t tag = 0;
+        if (!parse_size_token(tag_token, tag) || !(row_input >> entity_type)) {
+            mark_tagged_read_failure(input);
+            return std::nullopt;
+        }
+        // Positioned diagnostics are also advisory. Only the common tag/type
+        // prefix is needed; no diagnostic payload is decoded or validated.
+        if (entity_type == "warning" || entity_type == "information" ||
+            entity_type == "error") {
+            continue;
+        }
 
-    std::size_t tag = 0;
-    if (!parse_size_token(tag_token, tag)) {
-        mark_tagged_read_failure(input);
-        return std::nullopt;
-    }
+        std::string version_token;
+        if (!(row_input >> version_token) || version_token != "v1") {
+            mark_tagged_read_failure(input);
+            return std::nullopt;
+        }
 
-    std::string payload;
-    std::getline(row_input, payload);
-    return tagged_text_record{
-        tag, std::move(entity_type), std::move(payload)};
+        std::string payload;
+        std::getline(row_input, payload);
+        return tagged_text_record{
+            tag, std::move(entity_type), std::move(payload)};
+    }
+    return std::nullopt;
 }
 
 [[nodiscard]] inline std::istringstream tagged_payload_input(
@@ -226,12 +240,10 @@ inline void mark_tagged_read_failure(std::istream& input) {
     return !(input >> extra_token);
 }
 
-template <std::floating_point REAL, typename payload_writer>
-std::ostream& write_tagged_text_record(
+template <std::floating_point REAL, typename record_writer>
+std::ostream& write_text_record(
     std::ostream& output,
-    std::size_t tag,
-    std::string_view entity_type,
-    payload_writer&& write_payload) {
+    record_writer&& write_record) {
     std::ostringstream row;
     row.imbue(std::locale::classic());
     row.setf(std::ios::dec, std::ios::basefield);
@@ -240,8 +252,7 @@ std::ostream& write_tagged_text_record(
         std::ios::showbase | std::ios::showpos | std::ios::uppercase |
         std::ios::boolalpha);
     row.precision(std::numeric_limits<REAL>::max_digits10 - 1);
-    row << tag << ' ' << entity_type << " v1";
-    std::forward<payload_writer>(write_payload)(row);
+    std::forward<record_writer>(write_record)(row);
     row.put('\n');
 
     const std::string encoded = row.str();
@@ -262,6 +273,18 @@ std::ostream& write_tagged_text_record(
         offset += static_cast<std::size_t>(chunk_size);
     }
     return output;
+}
+
+template <std::floating_point REAL, typename payload_writer>
+std::ostream& write_tagged_text_record(
+    std::ostream& output,
+    std::size_t tag,
+    std::string_view entity_type,
+    payload_writer&& write_payload) {
+    return write_text_record<REAL>(output, [&](std::ostream& row) {
+        row << tag << ' ' << entity_type << " v1";
+        std::forward<payload_writer>(write_payload)(row);
+    });
 }
 
 [[nodiscard]] inline char coordinate_separator(text_format format) {

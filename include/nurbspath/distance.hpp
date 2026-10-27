@@ -95,7 +95,8 @@ template <std::floating_point REAL>
 /**
  * @brief Numerically find the sampled global 2D point-to-spline minimum.
  *
- * Every sampled local basin is refined by golden-section minimization.
+ * Every sampled local basin, including the boundary sample intervals, is
+ * refined by golden-section minimization.
  * Coverage therefore depends on `settings.sample_count`. No plane or 3D
  * projection participates in this calculation.
  *
@@ -133,13 +134,13 @@ template <std::floating_point REAL>
         }
     }
 
-    for (std::size_t index = 1; index < count; ++index) {
-        if (values[index] <= values[index - 1] &&
-            values[index] <= values[index + 1]) {
+    for (std::size_t index = 0; index <= count; ++index) {
+        if ((index == 0 || values[index] <= values[index - 1]) &&
+            (index == count || values[index] <= values[index + 1])) {
             const REAL candidate = golden_section_minimize<REAL>(
                 squared_distance_at,
-                parameters[index - 1],
-                parameters[index + 1],
+                parameters[index == 0 ? 0 : index - 1],
+                parameters[index == count ? count : index + 1],
                 settings);
             const REAL candidate_value = squared_distance_at(candidate);
             if (candidate_value < best_value) {
@@ -214,8 +215,9 @@ template <std::floating_point REAL>
 /**
  * @brief Numerically find the sampled global point-to-spline minimum.
  *
- * Every sampled local basin is refined by golden-section minimization. Coverage
- * therefore depends on `settings.sample_count`.
+ * Every sampled local basin, including the boundary sample intervals, is
+ * refined by golden-section minimization. Coverage therefore depends on
+ * `settings.sample_count`.
  *
  * @tparam REAL Floating-point scalar type.
  * @param point World-space query point.
@@ -251,13 +253,13 @@ template <std::floating_point REAL>
         }
     }
 
-    for (std::size_t index = 1; index < count; ++index) {
-        if (values[index] <= values[index - 1] &&
-            values[index] <= values[index + 1]) {
+    for (std::size_t index = 0; index <= count; ++index) {
+        if ((index == 0 || values[index] <= values[index - 1]) &&
+            (index == count || values[index] <= values[index + 1])) {
             const REAL candidate = golden_section_minimize<REAL>(
                 squared_distance_at,
-                parameters[index - 1],
-                parameters[index + 1],
+                parameters[index == 0 ? 0 : index - 1],
+                parameters[index == count ? count : index + 1],
                 settings);
             const REAL candidate_value = squared_distance_at(candidate);
             if (candidate_value < best_value) {

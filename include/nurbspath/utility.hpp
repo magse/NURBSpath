@@ -16,7 +16,8 @@ namespace nurbspath {
  * @brief Controls iterative and sampled numerical algorithms.
  *
  * `residual_tolerance` uses function-result units and `parameter_tolerance`
- * uses parameter units. Increase `sample_count` for oscillatory functions.
+ * uses parameter units. Both tolerances must be finite and positive.
+ * Increase `sample_count` for oscillatory functions.
  *
  * @tparam REAL Floating-point scalar type.
  */
@@ -29,14 +30,19 @@ struct numerical_settings {
 
     /**
      * @brief Validate all numerical controls.
-     * @throws std::invalid_argument When a tolerance/count is not positive or sample_count is below two.
+     * @throws std::invalid_argument When a tolerance is not finite and positive,
+     * max_iterations is zero, or sample_count is below two.
      */
     void validate() const {
-        if (!(residual_tolerance > REAL(0))) {
-            throw std::invalid_argument("residual_tolerance must be positive");
+        if (!(residual_tolerance > REAL(0)) ||
+            !std::isfinite(residual_tolerance)) {
+            throw std::invalid_argument(
+                "residual_tolerance must be finite and positive");
         }
-        if (!(parameter_tolerance > REAL(0))) {
-            throw std::invalid_argument("parameter_tolerance must be positive");
+        if (!(parameter_tolerance > REAL(0)) ||
+            !std::isfinite(parameter_tolerance)) {
+            throw std::invalid_argument(
+                "parameter_tolerance must be finite and positive");
         }
         if (max_iterations == 0) {
             throw std::invalid_argument("max_iterations must be positive");

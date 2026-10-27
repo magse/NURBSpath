@@ -2,6 +2,7 @@
 
 #include "test_support.hpp"
 
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <string>
@@ -107,6 +108,29 @@ int main() {
           "perspective coordinates are finite");
     check(perspective_svg != svg, "projections differ");
 
+    const auto float_orthographic = nurbspath::svg_view3<float>::orthographic(
+        {0.0F, 0.0F, 5.0F}, {0.0F, 0.0F, 0.0F}, 4.0F, 4.0F);
+    const auto float_perspective = nurbspath::svg_view3<float>::perspective(
+        {0.0F, 0.0F, 5.0F}, {0.0F, 0.0F, 0.0F},
+        std::numbers::pi_v<float> / 3.0F);
+    for (const auto& float_view : {float_orthographic, float_perspective}) {
+        const std::string unit_ray_svg = nurbspath::to_svg(
+            float_view,
+            nurbspath::ray3<float>({0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}));
+        for (const float magnitude : {1e-5F, 1e20F}) {
+            const nurbspath::ray3<float> scaled_ray(
+                {0.0F, 0.0F, 0.0F}, {magnitude, 0.0F, 0.0F});
+            const std::string scaled_ray_svg = nurbspath::to_svg(
+                float_view, scaled_ray);
+            check(scaled_ray_svg == unit_ray_svg &&
+                      count_occurrences(
+                          scaled_ray_svg, "class=\"nurbspath_ray\"") == 1,
+                  "3D ray glyph is independent of direction magnitude in both projections");
+            check(scaled_ray.direction().x == magnitude,
+                  "3D ray rendering preserves the native parameter direction");
+        }
+    }
+
     const std::string one_point = nurbspath::to_svg(orthographic_view, point, options);
     check(count_occurrences(one_point, "nurbspath_point") == 1,
           "single-entity convenience output");
@@ -119,6 +143,28 @@ int main() {
         rejected_equal_points = true;
     }
     check(rejected_equal_points, "camera rejects equal points");
+
+    bool rejected_overflowing_width = false;
+    try {
+        auto invalid_options = options;
+        invalid_options.line_width = std::numeric_limits<real>::max();
+        invalid_options.validate();
+    } catch (const std::invalid_argument&) {
+        rejected_overflowing_width = true;
+    }
+    check(rejected_overflowing_width,
+          "3D graphics reject line widths whose derived sizes overflow");
+
+    auto huge_options = options;
+    huge_options.line_width = std::numeric_limits<real>::max() / 8.0;
+    const real far_x = -std::numeric_limits<real>::max() * 0.009;
+    const auto far_view = nurbspath::svg_view3<real>::orthographic(
+        {far_x, 0.0, 5.0}, {far_x, 0.0, 0.0}, 8.0, 6.0);
+    const nurbspath::svg_document3<real> far_document(far_view, huge_options);
+    const std::string far_svg = far_document.svg();
+    check(!contains_nonfinite_svg_number(far_svg) &&
+              far_svg.find("_label\"") == std::string::npos,
+          "3D labels with overflowing screen offsets are omitted");
 
     return finish("08_test_svg_graphics");
 }
